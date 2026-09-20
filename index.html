@@ -26,7 +26,7 @@
 
   <div class="btn-group">
     <button id="icsBtn" disabled>📅 Generate .ICS Calendar</button>
-    <button id="pdfBtn" disabled>📄 Generate Summary PDF</button>
+    <button id="pdfBtn" disabled>📄 Generate Calendar PDF</button>
   </div>
 
   <div id="log">Upload PDFs to begin...</div>
@@ -75,6 +75,7 @@
 
     function extractMetadataFromFileName(filename) {
       let defaultLoc = 'Pacific Place (PP)';
+      let defaultLocCode = 'PP';
       let year = '2026';
       let month = '09';
 
@@ -82,6 +83,7 @@
         let regex = new RegExp(`[\\b_]${code}[\\b_.]`, 'i');
         if (regex.test(filename)) {
           defaultLoc = locationMap[code];
+          defaultLocCode = code;
           break;
         }
       }
@@ -96,12 +98,12 @@
         }
       }
 
-      return { defaultLoc, year, month };
+      return { defaultLoc, defaultLocCode, year, month };
     }
 
-    async function parseScheduleEvents() {
+    async function parseWeeklySchedules() {
       log.textContent = "Processing PDF pages...\n";
-      let events = [];
+      let weeklyData = [];
 
       for (let file of filesList) {
         const fileMeta = extractMetadataFromFileName(file.name);
@@ -118,6 +120,11 @@
             str: item.str.trim()
           })).filter(i => i.str.length > 0);
 
+          // Find Week Number header (e.g., WEEK 6, WEEK 7)
+          let weekItem = items.find(i => /^WEEK\s*\d+$/i.test(i.str) \vert{}\vert{} (i.str === "WEEK" && items.some(k => /^\d{1,2}$/.test(k.str) && Math.abs(k.y - i.y) < 5)));
+          let weekLabel = weekItem ? weekItem.str : `Page ${pageNum}`;
+
+          // Find Day headers (Mon..Sun)
           let headers = [];
           dayNames.forEach(d => {
             let found = items.find(i => i.str === d);
@@ -125,7 +132,6 @@
           });
 
           if (headers.length < 5) continue;
-
           headers.sort((a, b) => a.x - b.x);
 
           let minX = headers[0].x - 15;
@@ -157,20 +163,23 @@
             i.x <= maxX
           );
 
+          let pageWeek = {
+            weekLabel: weekLabel,
+            days: []
+          };
+
           columns.forEach(col => {
             let matched = kevinRowItems.filter(i => Math.abs(i.x - col.x) < 22);
-            if (matched.length === 0) return;
+            let cellText = matched.length > 0 ? matched.map(m => m.str).join(" ") : "";
 
-            let cellText = matched.map(m => m.str).join(" ");
-
-            if (/^(x|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
-              return;
-            }
-
-            let loc = fileMeta.defaultLoc;
+            let isOff = /^(x|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ") || cellText === "";
+            
+            let locCode = fileMeta.defaultLocCode;
+            let fullLoc = fileMeta.defaultLoc;
             for (let code in locationMap) {
               if (cellText.includes(code)) {
-                loc = locationMap[code];
+                locCode = code;
+                fullLoc = locationMap[code];
                 break;
               }
             }
@@ -178,54 +187,73 @@
             let times = cellText.match(/(\d{4})-(\d{4})/);
             let start = "";
             let end = "";
+            let hoursStr = "OFF";
 
             if (times) {
               start = `${times[1].slice(0,2)}:${times[1].slice(2)}`;
               end = `${times[2].slice(0,2)}:${times[2].slice(2)}`;
+              hoursStr = `${start}-${end}`;
+            } else if (!isOff) {
+              hoursStr = cellText; // preserve non-time entries like shift codes
             }
 
             let dayFormatted = String(col.dayNum).padStart(2, '0');
-            events.push({
-              date: `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`,
-              dayNum: col.dayNum,
+            pageWeek.days.push({
+              dateNum: col.dayNum,
+              dayName: col.dayName,
+              fullDate: `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`,
+              isOff: isOff,
+              locCode: isOff ? 'OFF' : locCode,
+              fullLoc: fullLoc,
+              hours: hoursStr,
               start: start,
               end: end,
-              location: loc,
               raw: cellText
             });
           });
+
+          weeklyData.push(pageWeek);
         }
       }
 
-      let uniqueMap = new Map();
-      events.forEach(e => {
-        let key = `${e.date}-${e.location}`;
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, e);
-        }
-      });
-
-      return Array.from(uniqueMap.values()).sort((a, b) => a.dayNum - b.dayNum);
+      return weeklyData;
     }
 
     icsBtn.addEventListener('click', async () => {
-      let uniqueEvents = await parseScheduleEvents();
-      if (uniqueEvents.length === 0) {
+      let weeklyData = await parseWeeklySchedules();
+      let events = [];
+
+      weeklyData.forEach(w => {
+        w.days.forEach(d => {
+          if (!d.isOff) {
+            events.push({
+              date: d.fullDate,
+              dayNum: d.dateNum,
+              start: d.start,
+              end: d.end,
+              location: d.fullLoc,
+              raw: d.raw
+            });
+          }
+        });
+      });
+
+      if (events.length === 0) {
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.ics...`;
-      downloadICS(uniqueEvents);
+      log.textContent += `\nSuccessfully parsed ${events.length} working shifts!\nDownloading Kevin_Schedule.ics...`;
+      downloadICS(events);
     });
 
     pdfBtn.addEventListener('click', async () => {
-      let uniqueEvents = await parseScheduleEvents();
-      if (uniqueEvents.length === 0) {
-        log.textContent += "\nNo active work shifts found for Kevin.";
+      let weeklyData = await parseWeeklySchedules();
+      if (weeklyData.length === 0) {
+        log.textContent += "\nNo schedule data found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.pdf...`;
-      generatePDF(uniqueEvents);
+      log.textContent += `\nSuccessfully parsed ${weeklyData.length} weekly rosters!\nDownloading Kevin_Schedule.pdf...`;
+      generateCalendarPDF(weeklyData);
     });
 
     function downloadICS(events) {
@@ -262,29 +290,54 @@
       link.click();
     }
 
-    function generatePDF(events) {
+    function generateCalendarPDF(weeklyData) {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+      const doc = new jsPDF('landscape'); // Landscape format matches original roster grid
 
       doc.setFontSize(16);
-      doc.text("Kevin's Work Schedule Summary", 14, 20);
+      doc.text("Kevin's Work Schedule - September 2026", 14, 15);
 
-      const tableData = events.map(e => [
-        e.date,
-        e.location,
-        e.start && e.end ? `${e.start} - ${e.end}` : 'TBD',
-        e.raw
-      ]);
+      let startY = 25;
 
-      doc.autoTable({
-        startY: 30,
-        head: [['Date', 'Location', 'Shift Time', 'Roster Entry']],
-        body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [0, 112, 243] }
+      weeklyData.forEach((week, index) => {
+        // Pad days to 7 columns if needed
+        let dayHeaders = week.days.map(d => d.dayName);
+        let dateNumbers = week.days.map(d => String(d.dateNum));
+        let locations = week.days.map(d => d.locCode);
+        let hours = week.days.map(d => d.hours);
+
+        doc.setFontSize(12);
+        doc.text(`Master Week: ${week.weekLabel}`, 14, startY);
+
+        doc.autoTable({
+          startY: startY + 4,
+          head: [
+            ['Metric', ...dayHeaders]
+          ],
+          body: [
+            ['Date', ...dateNumbers],
+            ['Location', ...locations],
+            ['Hours / Shift', ...hours]
+          ],
+          theme: 'grid',
+          headStyles: { fillColor: [0, 112, 243], halign: 'center', fontStyle: 'bold' },
+          bodyStyles: { halign: 'center', fontSize: 10 },
+          columnStyles: {
+            0: { fontStyle: 'bold', fillColor: [240, 244, 248], cellWidth: 35 }
+          },
+          margin: { left: 14, right: 14 }
+        });
+
+        startY = doc.lastAutoTable.finalY + 12;
+
+        // Add page break if running out of vertical space
+        if (startY > 170 && index < weeklyData.length - 1) {
+          doc.addPage();
+          startY = 20;
+        }
       });
 
-      doc.save("Kevin_Schedule.pdf");
+      doc.save("Kevin_Schedule_Calendar.pdf");
     }
   </script>
 </body>
