@@ -2,27 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Monthly Schedule Extractor</title>
-  <!-- Load PDF.js library -->
+  <title>Kevin's Schedule Generator</title>
+  <!-- PDF.js for reading PDFs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <!-- jsPDF & AutoTable for creating PDFs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; }
     .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 40px; text-align: center; background: #f7f9fa; cursor: pointer; }
     .dropzone:hover { background: #f0f4f8; }
-    button { background: #0070f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; width: 100%; }
+    .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+    button { background: #0070f3; color: white; border: none; padding: 12px 20px; border-radius: 6px; font-size: 15px; cursor: pointer; flex: 1; }
     button:disabled { background: #ccc; cursor: not-allowed; }
     #log { margin-top: 20px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
   </style>
 </head>
 <body>
 
-  <h2>Kevin's Schedule to Calendar (.ics)</h2>
+  <h2>Kevin's Monthly Schedule Generator</h2>
   <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-    <p>📄 Drop all schedule PDFs here or click to upload</p>
+    <p>📄 Drop schedule PDFs here or click to upload</p>
     <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
   </div>
 
-  <button id="processBtn" disabled>Generate .ics Calendar File</button>
+  <div class="btn-group">
+    <button id="processBtn" disabled>Generate .ICS & Summary PDF</button>
+  </div>
 
   <div id="log">Upload PDFs to begin...</div>
 
@@ -70,7 +76,6 @@
           const page = await pdf.getPage(i);
           const textContent = await page.getTextContent();
           
-          // Simple layout grouping by Y position
           let items = textContent.items;
           let lines = {};
           items.forEach(item => {
@@ -79,13 +84,12 @@
             lines[y].push(item.str);
           });
 
-          let sortedY = Object.keys(lines).sort((a, b) => b - a); // Top to bottom
+          let sortedY = Object.keys(lines).sort((a, b) => b - a);
           let dates = [];
 
           for (let y of sortedY) {
             let lineText = lines[y].join(' ').trim();
 
-            // Extract row containing date numbers
             if (lineText.includes('Mon') && lineText.includes('Tue')) {
               let idx = sortedY.indexOf(y);
               if (idx > 0) {
@@ -94,26 +98,23 @@
               }
             }
 
-            // Extract Kevin's line
             if (lineText.startsWith('Kevin')) {
-              let parts = lineText.split(/\s+/).slice(1); // skip 'Kevin'
-              // Filter out employee type like 'FT'
-              parts = parts.filter(p => p !== 'FT');
+              let parts = lineText.split(/\s+/).slice(1).filter(p => p !== 'FT');
 
               dates.forEach((dayNum, index) => {
                 let status = parts[index];
                 if (!status || ['X', 'x', 'x (w2)', 'x (W1)', 'AL'].includes(status)) return;
 
-                let loc = locationMap[status] || locationMap['PP']; // Default to location code or PP
+                let loc = locationMap[status] || locationMap['PP'];
                 let times = status.match(/(\d{4})-(\d{4})/);
                 
                 let start = times ? `${times[1].slice(0,2)}:${times[1].slice(2)}` : '09:30';
                 let end = times ? `${times[2].slice(0,2)}:${times[2].slice(2)}` : '18:30';
 
-                // Format as YYYY-MM-DD (assuming current/target month)
                 let dayFormatted = dayNum.padStart(2, '0');
                 events.push({
                   date: `2026-09-${dayFormatted}`,
+                  dayNum: dayNum,
                   start, end, location: loc, raw: status
                 });
               });
@@ -123,12 +124,17 @@
       }
 
       if (events.length === 0) {
-        log.textContent += "\nNo shifts found for Kevin.";
+        log.textContent += "\nNo scheduled working shifts found for Kevin.";
         return;
       }
 
-      log.textContent += `\nFound ${events.length} shifts for Kevin. Generating .ics file...`;
+      // Sort events chronologically
+      events.sort((a, b) => parseInt(a.dayNum) - parseInt(b.dayNum));
+
+      log.textContent += `\nFound ${events.length} working shifts for Kevin. Generating files...`;
+      
       downloadICS(events);
+      generatePDF(events);
     });
 
     function downloadICS(events) {
@@ -160,6 +166,31 @@
       link.href = window.URL.createObjectURL(blob);
       link.download = 'Kevin_Schedule.ics';
       link.click();
+    }
+
+    function generatePDF(events) {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFontSize(16);
+      doc.text("Kevin's Work Schedule", 14, 20);
+
+      const tableData = events.map(e => [
+        e.date,
+        e.location,
+        `${e.start} - ${e.end}`,
+        e.raw
+      ]);
+
+      doc.autoTable({
+        startY: 30,
+        head: [['Date', 'Location', 'Shift Time', 'Raw Code']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [0, 112, 243] }
+      });
+
+      doc.save("Kevin_Schedule.pdf");
     }
   </script>
 </body>
