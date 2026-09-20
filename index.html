@@ -74,14 +74,16 @@
     }
 
     function extractMetadataFromFileName(filename) {
-      let defaultLoc = 'Pacific Place (PP)';
+      let fileStoreCode = 'PP';
+      let fileStoreName = 'Pacific Place (PP)';
       let year = '2026';
       let month = '09';
 
       for (let code in locationMap) {
         let regex = new RegExp(`[\\b_]${code}[\\b_.]`, 'i');
         if (regex.test(filename)) {
-          defaultLoc = locationMap[code];
+          fileStoreCode = code;
+          fileStoreName = locationMap[code];
           break;
         }
       }
@@ -96,12 +98,12 @@
         }
       }
 
-      return { defaultLoc, year, month };
+      return { fileStoreCode, fileStoreName, year, month };
     }
 
     async function parseScheduleEvents() {
       log.textContent = "Processing PDF pages...\n";
-      let events = [];
+      let rawEntriesByDate = {}; // Group entries by YYYY-MM-DD
 
       for (let file of filesList) {
         const fileMeta = extractMetadataFromFileName(file.name);
@@ -161,51 +163,82 @@
             let matched = kevinRowItems.filter(i => Math.abs(i.x - col.x) < 22);
             if (matched.length === 0) return;
 
-            let cellText = matched.map(m => m.str).join(" ");
-
-            if (/^(x|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
+            let cellText = matched.map(m => m.str).join(" ").trim();
+            
+            // Ignore Days Off
+            if (/^(x|x \(w2\)|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
               return;
             }
 
-            let loc = fileMeta.defaultLoc;
-            for (let code in locationMap) {
-              if (cellText.includes(code)) {
-                loc = locationMap[code];
-                break;
-              }
-            }
-
-            let times = cellText.match(/(\d{4})-(\d{4})/);
-            let start = "";
-            let end = "";
-
-            if (times) {
-              start = `${times[1].slice(0,2)}:${times[1].slice(2)}`;
-              end = `${times[2].slice(0,2)}:${times[2].slice(2)}`;
-            }
-
             let dayFormatted = String(col.dayNum).padStart(2, '0');
-            events.push({
-              date: `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`,
+            let dateKey = `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`;
+
+            if (!rawEntriesByDate[dateKey]) {
+              rawEntriesByDate[dateKey] = [];
+            }
+
+            rawEntriesByDate[dateKey].push({
+              sourceStoreCode: fileMeta.fileStoreCode,
+              sourceStoreName: fileMeta.fileStoreName,
               dayNum: col.dayNum,
-              start: start,
-              end: end,
-              location: loc,
-              raw: cellText
+              cellText: cellText
             });
           });
         }
       }
 
-      let uniqueMap = new Map();
-      events.forEach(e => {
-        let key = `${e.date}-${e.location}`;
-        if (!uniqueMap.has(key)) {
-          uniqueMap.set(key, e);
-        }
-      });
+      // Reconcile entries across all roster sources for each date
+      let finalEvents = [];
 
-      return Array.from(uniqueMap.values()).sort((a, b) => a.dayNum - b.dayNum);
+      for (let dateKey in rawEntriesByDate) {
+        let entries = rawEntriesByDate[dateKey];
+        let primaryShiftTime = null;
+        let actualLocationName = null;
+        let combinedRaw = [];
+
+        // 1. First pass: look for physical shift time (digits like 0930-1830)
+        entries.forEach(entry => {
+          combinedRaw.push(`${entry.sourceStoreCode}: ${entry.cellText}`);
+          let times = entry.cellText.match(/(\d{4})-(\d{4})/);
+          if (times && !primaryShiftTime) {
+            primaryShiftTime = {
+              start: `${times[1].slice(0,2)}:${times[1].slice(2)}`,
+              end: `${times[2].slice(0,2)}:${times[2].slice(2)}`
+            };
+            actualLocationName = entry.sourceStoreName;
+          }
+        });
+
+        // 2. Second pass: resolve destination location code if exact time wasn't on this sheet
+        if (!actualLocationName) {
+          for (let entry of entries) {
+            for (let code in locationMap) {
+              if (entry.cellText.toUpperCase() === code) {
+                actualLocationName = locationMap[code];
+                break;
+              }
+            }
+            if (actualLocationName) break;
+          }
+        }
+
+        // Fallback if location remains undetected
+        if (!actualLocationName && entries.length > 0) {
+          actualLocationName = entries[0].sourceStoreName;
+        }
+
+        finalEvents.push({
+          date: dateKey,
+          dayNum: entries[0].dayNum,
+          start: primaryShiftTime ? primaryShiftTime.start : null,
+          end: primaryShiftTime ? primaryShiftTime.end : null,
+          isTimeMissing: !primaryShiftTime,
+          location: actualLocationName,
+          raw: combinedRaw.join(" | ")
+        });
+      }
+
+      return finalEvents.sort((a, b) => a.date.localeCompare(b.date));
     }
 
     icsBtn.addEventListener('click', async () => {
@@ -214,7 +247,7 @@
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.ics...`;
+      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading Kevin_Schedule.ics...`;
       downloadICS(uniqueEvents);
     });
 
@@ -224,7 +257,7 @@
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.pdf...`;
+      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading Kevin_Schedule.pdf...`;
       generatePDF(uniqueEvents);
     });
 
@@ -244,11 +277,11 @@
 
         icsContent.push(
           'BEGIN:VEVENT',
-          `SUMMARY:Work @ ${e.location}`,
+          `SUMMARY:Work @ ${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`,
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
           `LOCATION:${e.location}`,
-          `DESCRIPTION:Shift Details: ${e.raw}`,
+          `DESCRIPTION:Roster Sources: ${e.raw}${e.isTimeMissing ? ' | Time: TBD (Exact shift time missing from source file)' : ''}`,
           'END:VEVENT'
         );
       });
@@ -272,13 +305,13 @@
       const tableData = events.map(e => [
         e.date,
         e.location,
-        e.start && e.end ? `${e.start} - ${e.end}` : 'TBD',
+        e.isTimeMissing ? 'TBD' : `${e.start} - ${e.end}`,
         e.raw
       ]);
 
       doc.autoTable({
         startY: 30,
-        head: [['Date', 'Location', 'Shift Time', 'Roster Entry']],
+        head: [['Date', 'Location', 'Shift Time', 'Roster Entry Details']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [0, 112, 243] }
