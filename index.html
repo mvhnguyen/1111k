@@ -2,20 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Kevin's Schedule Generator</title>
-  <!-- PDF.js for reading PDFs -->
+  <title>Kevin's Monthly Schedule Generator</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <!-- jsPDF & AutoTable for creating PDFs -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 650px; margin: 40px auto; padding: 0 20px; color: #333; }
     .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 40px; text-align: center; background: #f7f9fa; cursor: pointer; }
     .dropzone:hover { background: #f0f4f8; }
     .btn-group { display: flex; gap: 10px; margin-top: 20px; }
-    button { background: #0070f3; color: white; border: none; padding: 12px 20px; border-radius: 6px; font-size: 15px; cursor: pointer; flex: 1; }
+    button { flex: 1; background: #0070f3; color: white; border: none; padding: 12px 15px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
     button:disabled { background: #ccc; cursor: not-allowed; }
-    #log { margin-top: 20px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+    #log { margin-top: 20px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 12px; border-radius: 4px; max-height: 250px; overflow-y: auto; }
   </style>
 </head>
 <body>
@@ -27,7 +25,8 @@
   </div>
 
   <div class="btn-group">
-    <button id="processBtn" disabled>Generate .ICS & Summary PDF</button>
+    <button id="icsBtn" disabled>📅 Generate .ICS Calendar</button>
+    <button id="pdfBtn" disabled>📄 Generate Summary PDF</button>
   </div>
 
   <div id="log">Upload PDFs to begin...</div>
@@ -43,10 +42,19 @@
       'PP': 'Pacific Place (PP)'
     };
 
+    const monthMap = {
+      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
+      'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
+      'SEP': '09', 'SEPT': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+    };
+
+    const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
+
     let filesList = [];
     const fileInput = document.getElementById('fileInput');
     const dropzone = document.getElementById('dropzone');
-    const processBtn = document.getElementById('processBtn');
+    const icsBtn = document.getElementById('icsBtn');
+    const pdfBtn = document.getElementById('pdfBtn');
     const log = document.getElementById('log');
 
     fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
@@ -60,81 +68,164 @@
       filesList = Array.from(files).filter(f => f.type === 'application/pdf');
       if (filesList.length > 0) {
         log.textContent = `Selected ${filesList.length} PDF file(s):\n` + filesList.map(f => `- ${f.name}`).join('\n');
-        processBtn.disabled = false;
+        icsBtn.disabled = false;
+        pdfBtn.disabled = false;
       }
     }
 
-    processBtn.addEventListener('click', async () => {
-      log.textContent = "Processing PDFs...\n";
-      let events = [];
+    function extractMetadataFromFileName(filename) {
+      let defaultLoc = 'Pacific Place (PP)';
+      let year = '2026';
+      let month = '09';
 
-      for (let file of filesList) {
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const textContent = await page.getTextContent();
-          
-          let items = textContent.items;
-          let lines = {};
-          items.forEach(item => {
-            let y = Math.round(item.transform[5]);
-            if (!lines[y]) lines[y] = [];
-            lines[y].push(item.str);
-          });
-
-          let sortedY = Object.keys(lines).sort((a, b) => b - a);
-          let dates = [];
-
-          for (let y of sortedY) {
-            let lineText = lines[y].join(' ').trim();
-
-            if (lineText.includes('Mon') && lineText.includes('Tue')) {
-              let idx = sortedY.indexOf(y);
-              if (idx > 0) {
-                let prevLine = lines[sortedY[idx - 1]].join(' ');
-                dates = prevLine.match(/\b\d{1,2}\b/g) || [];
-              }
-            }
-
-            if (lineText.startsWith('Kevin')) {
-              let parts = lineText.split(/\s+/).slice(1).filter(p => p !== 'FT');
-
-              dates.forEach((dayNum, index) => {
-                let status = parts[index];
-                if (!status || ['X', 'x', 'x (w2)', 'x (W1)', 'AL'].includes(status)) return;
-
-                let loc = locationMap[status] || locationMap['PP'];
-                let times = status.match(/(\d{4})-(\d{4})/);
-                
-                let start = times ? `${times[1].slice(0,2)}:${times[1].slice(2)}` : '09:30';
-                let end = times ? `${times[2].slice(0,2)}:${times[2].slice(2)}` : '18:30';
-
-                let dayFormatted = dayNum.padStart(2, '0');
-                events.push({
-                  date: `2026-09-${dayFormatted}`,
-                  dayNum: dayNum,
-                  start, end, location: loc, raw: status
-                });
-              });
-            }
-          }
+      for (let code in locationMap) {
+        let regex = new RegExp(`[\\b_]${code}[\\b_.]`, 'i');
+        if (regex.test(filename)) {
+          defaultLoc = locationMap[code];
+          break;
         }
       }
 
-      if (events.length === 0) {
-        log.textContent += "\nNo scheduled working shifts found for Kevin.";
-        return;
+      let yearMatch = filename.match(/\b(202\d)\b/);
+      if (yearMatch) year = yearMatch[1];
+
+      for (let m in monthMap) {
+        if (filename.toUpperCase().includes(m)) {
+          month = monthMap[m];
+          break;
+        }
       }
 
-      // Sort events chronologically
-      events.sort((a, b) => parseInt(a.dayNum) - parseInt(b.dayNum));
+      return { defaultLoc, year, month };
+    }
 
-      log.textContent += `\nFound ${events.length} working shifts for Kevin. Generating files...`;
-      
-      downloadICS(events);
-      generatePDF(events);
+    async function parseScheduleEvents() {
+      log.textContent = "Processing PDF pages...\n";
+      let events = [];
+
+      for (let file of filesList) {
+        const fileMeta = extractMetadataFromFileName(file.name);
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          
+          let items = textContent.items.map(item => ({
+            x: Math.round(item.transform[4]),
+            y: Math.round(item.transform[5]),
+            str: item.str.trim()
+          })).filter(i => i.str.length > 0);
+
+          let headers = [];
+          dayNames.forEach(d => {
+            let found = items.find(i => i.str === d);
+            if (found) headers.push({ name: d, x: found.x, y: found.y });
+          });
+
+          if (headers.length < 5) continue;
+
+          headers.sort((a, b) => a.x - b.x);
+
+          let minX = headers[0].x - 15;
+          let maxX = headers[headers.length - 1].x + 35;
+          let headerY = headers[0].y;
+
+          let columns = [];
+          headers.forEach(h => {
+            let dateItem = items.find(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.x - h.x) < 25 && Math.abs(i.y - headerY) < 30);
+            if (dateItem) {
+              columns.push({
+                dayName: h.name,
+                dayNum: parseInt(dateItem.str, 10),
+                x: h.x
+              });
+            }
+          });
+
+          if (columns.length === 0) continue;
+
+          let kevinItem = items.find(i => i.str === "Kevin");
+          if (!kevinItem) continue;
+
+          let kevinRowItems = items.filter(i => 
+            Math.abs(i.y - kevinItem.y) < 8 && 
+            i.str !== "Kevin" && 
+            i.str !== "FT" &&
+            i.x >= minX && 
+            i.x <= maxX
+          );
+
+          columns.forEach(col => {
+            let matched = kevinRowItems.filter(i => Math.abs(i.x - col.x) < 22);
+            if (matched.length === 0) return;
+
+            let cellText = matched.map(m => m.str).join(" ");
+
+            if (/^(x|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
+              return;
+            }
+
+            let loc = fileMeta.defaultLoc;
+            for (let code in locationMap) {
+              if (cellText.includes(code)) {
+                loc = locationMap[code];
+                break;
+              }
+            }
+
+            let times = cellText.match(/(\d{4})-(\d{4})/);
+            let start = "";
+            let end = "";
+
+            if (times) {
+              start = `${times[1].slice(0,2)}:${times[1].slice(2)}`;
+              end = `${times[2].slice(0,2)}:${times[2].slice(2)}`;
+            }
+
+            let dayFormatted = String(col.dayNum).padStart(2, '0');
+            events.push({
+              date: `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`,
+              dayNum: col.dayNum,
+              start: start,
+              end: end,
+              location: loc,
+              raw: cellText
+            });
+          });
+        }
+      }
+
+      let uniqueMap = new Map();
+      events.forEach(e => {
+        let key = `${e.date}-${e.location}`;
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, e);
+        }
+      });
+
+      return Array.from(uniqueMap.values()).sort((a, b) => a.dayNum - b.dayNum);
+    }
+
+    icsBtn.addEventListener('click', async () => {
+      let uniqueEvents = await parseScheduleEvents();
+      if (uniqueEvents.length === 0) {
+        log.textContent += "\nNo active work shifts found for Kevin.";
+        return;
+      }
+      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.ics...`;
+      downloadICS(uniqueEvents);
+    });
+
+    pdfBtn.addEventListener('click', async () => {
+      let uniqueEvents = await parseScheduleEvents();
+      if (uniqueEvents.length === 0) {
+        log.textContent += "\nNo active work shifts found for Kevin.";
+        return;
+      }
+      log.textContent += `\nSuccessfully parsed ${uniqueEvents.length} working shifts!\nDownloading Kevin_Schedule.pdf...`;
+      generatePDF(uniqueEvents);
     });
 
     function downloadICS(events) {
@@ -145,8 +236,11 @@
       ];
 
       events.forEach(e => {
-        let startISO = e.date.replace(/-/g, '') + 'T' + e.start.replace(':', '') + '00';
-        let endISO = e.date.replace(/-/g, '') + 'T' + e.end.replace(':', '') + '00';
+        let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
+        let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
+
+        let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
+        let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
 
         icsContent.push(
           'BEGIN:VEVENT',
@@ -154,7 +248,7 @@
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
           `LOCATION:${e.location}`,
-          `DESCRIPTION:Shift: ${e.raw}`,
+          `DESCRIPTION:Shift Details: ${e.raw}`,
           'END:VEVENT'
         );
       });
@@ -173,18 +267,18 @@
       const doc = new jsPDF();
 
       doc.setFontSize(16);
-      doc.text("Kevin's Work Schedule", 14, 20);
+      doc.text("Kevin's Work Schedule Summary", 14, 20);
 
       const tableData = events.map(e => [
         e.date,
         e.location,
-        `${e.start} - ${e.end}`,
+        e.start && e.end ? `${e.start} - ${e.end}` : 'TBD',
         e.raw
       ]);
 
       doc.autoTable({
         startY: 30,
-        head: [['Date', 'Location', 'Shift Time', 'Raw Code']],
+        head: [['Date', 'Location', 'Shift Time', 'Roster Entry']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [0, 112, 243] }
