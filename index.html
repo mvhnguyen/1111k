@@ -77,6 +77,7 @@
       let defaultLoc = 'Pacific Place (PP)';
       let defaultLocCode = 'PP';
       let year = '2026';
+      let monthStr = 'SEPT';
       let month = '09';
 
       for (let code in locationMap) {
@@ -93,20 +94,24 @@
 
       for (let m in monthMap) {
         if (filename.toUpperCase().includes(m)) {
+          monthStr = m;
           month = monthMap[m];
           break;
         }
       }
 
-      return { defaultLoc, defaultLocCode, year, month };
+      return { defaultLoc, defaultLocCode, year, month, monthStr };
     }
 
     async function parseWeeklySchedules() {
       log.textContent = "Processing PDF pages...\n";
       let weeklyData = [];
+      let detectedMeta = { monthStr: 'SEPT', year: '2026' };
 
       for (let file of filesList) {
         const fileMeta = extractMetadataFromFileName(file.name);
+        detectedMeta = fileMeta; // Save last parsed metadata for filename output
+
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         
@@ -120,11 +125,9 @@
             str: item.str.trim()
           })).filter(i => i.str.length > 0);
 
-          // Find Week Number header (e.g., WEEK 6, WEEK 7)
           let weekItem = items.find(i => /^WEEK\s*\d+$/i.test(i.str) \vert{}\vert{} (i.str === "WEEK" && items.some(k => /^\d{1,2}$/.test(k.str) && Math.abs(k.y - i.y) < 5)));
           let weekLabel = weekItem ? weekItem.str : `Page ${pageNum}`;
 
-          // Find Day headers (Mon..Sun)
           let headers = [];
           dayNames.forEach(d => {
             let found = items.find(i => i.str === d);
@@ -194,7 +197,7 @@
               end = `${times[2].slice(0,2)}:${times[2].slice(2)}`;
               hoursStr = `${start}-${end}`;
             } else if (!isOff) {
-              hoursStr = cellText; // preserve non-time entries like shift codes
+              hoursStr = cellText;
             }
 
             let dayFormatted = String(col.dayNum).padStart(2, '0');
@@ -216,11 +219,11 @@
         }
       }
 
-      return weeklyData;
+      return { weeklyData, detectedMeta };
     }
 
     icsBtn.addEventListener('click', async () => {
-      let weeklyData = await parseWeeklySchedules();
+      let { weeklyData, detectedMeta } = await parseWeeklySchedules();
       let events = [];
 
       weeklyData.forEach(w => {
@@ -242,21 +245,25 @@
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${events.length} working shifts!\nDownloading Kevin_Schedule.ics...`;
-      downloadICS(events);
+      
+      let outName = `Kevin_Schedule_${detectedMeta.monthStr}_${detectedMeta.year}.ics`;
+      log.textContent += `\nSuccessfully parsed ${events.length} working shifts!\nDownloading ${outName}...`;
+      downloadICS(events, outName);
     });
 
     pdfBtn.addEventListener('click', async () => {
-      let weeklyData = await parseWeeklySchedules();
+      let { weeklyData, detectedMeta } = await parseWeeklySchedules();
       if (weeklyData.length === 0) {
         log.textContent += "\nNo schedule data found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully parsed ${weeklyData.length} weekly rosters!\nDownloading Kevin_Schedule.pdf...`;
-      generateCalendarPDF(weeklyData);
+      
+      let outName = `Kevin_Schedule_Calendar_${detectedMeta.monthStr}_${detectedMeta.year}.pdf`;
+      log.textContent += `\nSuccessfully parsed ${weeklyData.length} weekly rosters!\nDownloading ${outName}...`;
+      generateCalendarPDF(weeklyData, detectedMeta, outName);
     });
 
-    function downloadICS(events) {
+    function downloadICS(events, filename) {
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -286,21 +293,20 @@
       const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(blob);
-      link.download = 'Kevin_Schedule.ics';
+      link.download = filename;
       link.click();
     }
 
-    function generateCalendarPDF(weeklyData) {
+    function generateCalendarPDF(weeklyData, meta, filename) {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF('landscape'); // Landscape format matches original roster grid
+      const doc = new jsPDF('landscape');
 
       doc.setFontSize(16);
-      doc.text("Kevin's Work Schedule - September 2026", 14, 15);
+      doc.text(`Kevin's Work Schedule - ${meta.monthStr} ${meta.year}`, 14, 15);
 
       let startY = 25;
 
       weeklyData.forEach((week, index) => {
-        // Pad days to 7 columns if needed
         let dayHeaders = week.days.map(d => d.dayName);
         let dateNumbers = week.days.map(d => String(d.dateNum));
         let locations = week.days.map(d => d.locCode);
@@ -330,14 +336,13 @@
 
         startY = doc.lastAutoTable.finalY + 12;
 
-        // Add page break if running out of vertical space
         if (startY > 170 && index < weeklyData.length - 1) {
           doc.addPage();
           startY = 20;
         }
       });
 
-      doc.save("Kevin_Schedule_Calendar.pdf");
+      doc.save(filename);
     }
   </script>
 </body>
