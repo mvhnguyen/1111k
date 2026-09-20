@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Monthly Schedule Extractor</title>
+  <!-- Load PDF.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; color: #333; }
+    .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 40px; text-align: center; background: #f7f9fa; cursor: pointer; }
+    .dropzone:hover { background: #f0f4f8; }
+    button { background: #0070f3; color: white; border: none; padding: 12px 24px; border-radius: 6px; font-size: 16px; cursor: pointer; margin-top: 20px; width: 100%; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #log { margin-top: 20px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+  <h2>Kevin's Schedule to Calendar (.ics)</h2>
+  <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+    <p>📄 Drop all schedule PDFs here or click to upload</p>
+    <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
+  </div>
+
+  <button id="processBtn" disabled>Generate .ics Calendar File</button>
+
+  <div id="log">Upload PDFs to begin...</div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    const locationMap = {
+      'CY': 'Central Yard (CY)',
+      'KT': 'Kennedy Town (KT)',
+      'SK': 'Sai Kung (SK)',
+      'OIE': 'Quarry Bay (OIE)',
+      'PP': 'Pacific Place (PP)'
+    };
+
+    let filesList = [];
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const processBtn = document.getElementById('processBtn');
+    const log = document.getElementById('log');
+
+    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    dropzone.addEventListener('dragover', (e) => e.preventDefault());
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      handleFiles(e.dataTransfer.files);
+    });
+
+    function handleFiles(files) {
+      filesList = Array.from(files).filter(f => f.type === 'application/pdf');
+      if (filesList.length > 0) {
+        log.textContent = `Selected ${filesList.length} PDF file(s):\n` + filesList.map(f => `- ${f.name}`).join('\n');
+        processBtn.disabled = false;
+      }
+    }
+
+    processBtn.addEventListener('click', async () => {
+      log.textContent = "Processing PDFs...\n";
+      let events = [];
+
+      for (let file of filesList) {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          // Simple layout grouping by Y position
+          let items = textContent.items;
+          let lines = {};
+          items.forEach(item => {
+            let y = Math.round(item.transform[5]);
+            if (!lines[y]) lines[y] = [];
+            lines[y].push(item.str);
+          });
+
+          let sortedY = Object.keys(lines).sort((a, b) => b - a); // Top to bottom
+          let dates = [];
+
+          for (let y of sortedY) {
+            let lineText = lines[y].join(' ').trim();
+
+            // Extract row containing date numbers
+            if (lineText.includes('Mon') && lineText.includes('Tue')) {
+              let idx = sortedY.indexOf(y);
+              if (idx > 0) {
+                let prevLine = lines[sortedY[idx - 1]].join(' ');
+                dates = prevLine.match(/\b\d{1,2}\b/g) || [];
+              }
+            }
+
+            // Extract Kevin's line
+            if (lineText.startsWith('Kevin')) {
+              let parts = lineText.split(/\s+/).slice(1); // skip 'Kevin'
+              // Filter out employee type like 'FT'
+              parts = parts.filter(p => p !== 'FT');
+
+              dates.forEach((dayNum, index) => {
+                let status = parts[index];
+                if (!status || ['X', 'x', 'x (w2)', 'x (W1)', 'AL'].includes(status)) return;
+
+                let loc = locationMap[status] || locationMap['PP']; // Default to location code or PP
+                let times = status.match(/(\d{4})-(\d{4})/);
+                
+                let start = times ? `${times[1].slice(0,2)}:${times[1].slice(2)}` : '09:30';
+                let end = times ? `${times[2].slice(0,2)}:${times[2].slice(2)}` : '18:30';
+
+                // Format as YYYY-MM-DD (assuming current/target month)
+                let dayFormatted = dayNum.padStart(2, '0');
+                events.push({
+                  date: `2026-09-${dayFormatted}`,
+                  start, end, location: loc, raw: status
+                });
+              });
+            }
+          }
+        }
+      }
+
+      if (events.length === 0) {
+        log.textContent += "\nNo shifts found for Kevin.";
+        return;
+      }
+
+      log.textContent += `\nFound ${events.length} shifts for Kevin. Generating .ics file...`;
+      downloadICS(events);
+    });
+
+    function downloadICS(events) {
+      let icsContent = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Shift Schedule Extractor//EN'
+      ];
+
+      events.forEach(e => {
+        let startISO = e.date.replace(/-/g, '') + 'T' + e.start.replace(':', '') + '00';
+        let endISO = e.date.replace(/-/g, '') + 'T' + e.end.replace(':', '') + '00';
+
+        icsContent.push(
+          'BEGIN:VEVENT',
+          `SUMMARY:Work @ ${e.location}`,
+          `DTSTART:${startISO}`,
+          `DTEND:${endISO}`,
+          `LOCATION:${e.location}`,
+          `DESCRIPTION:Shift: ${e.raw}`,
+          'END:VEVENT'
+        );
+      });
+
+      icsContent.push('END:VCALENDAR');
+
+      const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      link.download = 'Kevin_Schedule.ics';
+      link.click();
+    }
+  </script>
+</body>
+</html>
