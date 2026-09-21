@@ -206,8 +206,22 @@
               return;
             }
 
+            // NEW CODE: Handles previous month dates (e.g., Aug 31 at the start of a Sept roster)
+            let targetYear = parseInt(fileMeta.year, 10);
+            let targetMonth = parseInt(fileMeta.month, 10);
+            
+            // If day number is high (e.g. 28-31) in the very first week column, it belongs to the previous month
+            if (col.dayNum > 25 && columns.indexOf(col) < 3) {
+              targetMonth -= 1;
+              if (targetMonth === 0) {
+                targetMonth = 12;
+                targetYear -= 1;
+              }
+            }
+            
+            let monthFormatted = String(targetMonth).padStart(2, '0');
             let dayFormatted = String(col.dayNum).padStart(2, '0');
-            let dateKey = `${fileMeta.year}-${fileMeta.month}-${dayFormatted}`;
+            let dateKey = `${targetYear}-${monthFormatted}-${dayFormatted}`;
 
             if (!rawEntriesByDate[dateKey]) {
               rawEntriesByDate[dateKey] = [];
