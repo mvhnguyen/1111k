@@ -48,9 +48,18 @@
       'SEP': '09', 'SEPT': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
     };
 
+    const monthNamesUpper = {
+      '01': 'JANUARY', '02': 'FEBRUARY', '03': 'MARCH', '04': 'APRIL',
+      '05': 'MAY', '06': 'JUNE', '07': 'JULY', '08': 'AUGUST',
+      '09': 'SEPTEMBER', '10': 'OCTOBER', '11': 'NOVEMBER', '12': 'DECEMBER'
+    };
+
     const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
 
     let filesList = [];
+    let detectedMonthStr = "SEPTEMBER"; // Default fallback month name for file export
+    let detectedYearStr = "2026";
+
     const fileInput = document.getElementById('fileInput');
     const dropzone = document.getElementById('dropzone');
     const icsBtn = document.getElementById('icsBtn');
@@ -101,12 +110,39 @@
       return { fileStoreCode, fileStoreName, year, month };
     }
 
+    function formatTimeString(rawTime) {
+      let clean = rawTime.replace(/[^\d]/g, '');
+      if (clean.length === 3) clean = '0' + clean;
+      if (clean.length === 4) {
+        return `${clean.slice(0, 2)}:${clean.slice(2)}`;
+      }
+      return rawTime;
+    }
+
+    function parseShiftTime(text) {
+      let match = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
+      if (match) {
+        return {
+          start: formatTimeString(match[1]),
+          end: formatTimeString(match[2])
+        };
+      }
+      return null;
+    }
+
     async function parseScheduleEvents() {
       log.textContent = "Processing PDF pages...\n";
-      let rawEntriesByDate = {}; // Group entries by YYYY-MM-DD
+      let rawEntriesByDate = {}; 
 
       for (let file of filesList) {
         const fileMeta = extractMetadataFromFileName(file.name);
+        
+        // Track the detected month for dynamic output filenames
+        detectedYearStr = fileMeta.year;
+        if (monthNamesUpper[fileMeta.month]) {
+          detectedMonthStr = monthNamesUpper[fileMeta.month];
+        }
+
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         
@@ -152,7 +188,7 @@
           if (!kevinItem) continue;
 
           let kevinRowItems = items.filter(i => 
-            Math.abs(i.y - kevinItem.y) < 8 && 
+            Math.abs(i.y - kevinItem.y) < 14 && 
             i.str !== "Kevin" && 
             i.str !== "FT" &&
             i.x >= minX && 
@@ -160,12 +196,12 @@
           );
 
           columns.forEach(col => {
-            let matched = kevinRowItems.filter(i => Math.abs(i.x - col.x) < 22);
+            let matched = kevinRowItems.filter(i => Math.abs(i.x - col.x) < 25);
             if (matched.length === 0) return;
 
             let cellText = matched.map(m => m.str).join(" ").trim();
             
-            // Ignore Days Off
+            // Ignore Off Days / Leaves
             if (/^(x|x \(w2\)|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
               return;
             }
@@ -187,7 +223,6 @@
         }
       }
 
-      // Reconcile entries across all roster sources for each date
       let finalEvents = [];
 
       for (let dateKey in rawEntriesByDate) {
@@ -196,24 +231,21 @@
         let actualLocationName = null;
         let combinedRaw = [];
 
-        // 1. First pass: look for physical shift time (digits like 0930-1830)
+        // 1. Check all entries for explicit numerical shift times
         entries.forEach(entry => {
           combinedRaw.push(`${entry.sourceStoreCode}: ${entry.cellText}`);
-          let times = entry.cellText.match(/(\d{4})-(\d{4})/);
-          if (times && !primaryShiftTime) {
-            primaryShiftTime = {
-              start: `${times[1].slice(0,2)}:${times[1].slice(2)}`,
-              end: `${times[2].slice(0,2)}:${times[2].slice(2)}`
-            };
+          let parsedTime = parseShiftTime(entry.cellText);
+          if (parsedTime && !primaryShiftTime) {
+            primaryShiftTime = parsedTime;
             actualLocationName = entry.sourceStoreName;
           }
         });
 
-        // 2. Second pass: resolve destination location code if exact time wasn't on this sheet
+        // 2. Resolve destination store if an transfer code exists (e.g. "KT", "CY")
         if (!actualLocationName) {
           for (let entry of entries) {
             for (let code in locationMap) {
-              if (entry.cellText.toUpperCase() === code) {
+              if (new RegExp(`\\b${code}\\b`, 'i').test(entry.cellText)) {
                 actualLocationName = locationMap[code];
                 break;
               }
@@ -222,7 +254,7 @@
           }
         }
 
-        // Fallback if location remains undetected
+        // Fallback store location assignment
         if (!actualLocationName && entries.length > 0) {
           actualLocationName = entries[0].sourceStoreName;
         }
@@ -247,8 +279,9 @@
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading Kevin_Schedule.ics...`;
-      downloadICS(uniqueEvents);
+      const filename = `Kevin_Schedule_${detectedMonthStr}_${detectedYearStr}.ics`;
+      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading ${filename}...`;
+      downloadICS(uniqueEvents, filename);
     });
 
     pdfBtn.addEventListener('click', async () => {
@@ -257,11 +290,12 @@
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
-      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading Kevin_Schedule.pdf...`;
-      generatePDF(uniqueEvents);
+      const filename = `Kevin_Schedule_${detectedMonthStr}_${detectedYearStr}.pdf`;
+      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading ${filename}...`;
+      generatePDF(uniqueEvents, filename);
     });
 
-    function downloadICS(events) {
+    function downloadICS(events, filename) {
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -281,7 +315,7 @@
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
           `LOCATION:${e.location}`,
-          `DESCRIPTION:Roster Sources: ${e.raw}${e.isTimeMissing ? ' | Time: TBD (Exact shift time missing from source file)' : ''}`,
+          `DESCRIPTION:Roster Sources: ${e.raw}${e.isTimeMissing ? ' | Time: TBD' : ''}`,
           'END:VEVENT'
         );
       });
@@ -291,16 +325,16 @@
       const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(blob);
-      link.download = 'Kevin_Schedule.ics';
+      link.download = filename;
       link.click();
     }
 
-    function generatePDF(events) {
+    function generatePDF(events, filename) {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
 
       doc.setFontSize(16);
-      doc.text("Kevin's Work Schedule Summary", 14, 20);
+      doc.text(`Kevin's Work Schedule - ${detectedMonthStr} ${detectedYearStr}`, 14, 20);
 
       const tableData = events.map(e => [
         e.date,
@@ -317,7 +351,7 @@
         headStyles: { fillColor: [0, 112, 243] }
       });
 
-      doc.save("Kevin_Schedule.pdf");
+      doc.save(filename);
     }
   </script>
 </body>
