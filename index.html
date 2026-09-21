@@ -25,6 +25,28 @@
     .input-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
     h2 { margin-top: 0; font-size: 20px; color: #111; }
     h3 { margin-top: 0; font-size: 14px; color: #444; }
+    /* Responsive adjustments for mobile viewports */
+    @media (max-width: 768px) {
+      /* Stack dual file drop zones vertically */
+      .upload-container, .comparison-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+    
+      /* Expand touch targets for file removal & buttons */
+      button, .file-item-remove {
+        min-height: 44px;
+        min-width: 44px;
+        font-size: 16px; /* Prevents auto-zoom on iOS inputs */
+      }
+    
+      /* Enable horizontal scroll container for wide tables */
+      .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+    }
   </style>
 </head>
 <body>
