@@ -161,7 +161,6 @@
             if (found) headers.push({ name: d, x: found.x, y: found.y });
           });
 
-          // Allow partial pages (e.g., month ending with 1 to 4 days)
           if (headers.length < 1) continue;
 
           headers.sort((a, b) => a.x - b.x);
@@ -201,7 +200,6 @@
 
             let cellText = matched.map(m => m.str).join(" ").trim();
 
-            // Calculate cross-month dates (e.g., Aug 31 at the start of a Sept roster)
             let targetYear = parseInt(fileMeta.year, 10);
             let targetMonth = parseInt(fileMeta.month, 10);
 
@@ -344,8 +342,9 @@
 
     function generatePDF(events, filename) {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
+      const doc = new jsPDF('p', 'mm', 'a4');
 
+      // --- PAGE 1: Detailed List Table ---
       doc.setFontSize(16);
       doc.text(`Kevin's Work Schedule - ${detectedMonthStr} ${detectedYearStr}`, 14, 20);
 
@@ -363,6 +362,111 @@
         theme: 'striped',
         headStyles: { fillColor: [0, 112, 243] }
       });
+
+      // --- PAGE 2: Monthly Visual Calendar View ---
+      doc.addPage();
+
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Calendar View - ${detectedMonthStr} ${detectedYearStr}`, 14, 18);
+
+      const startX = 14;
+      const startY = 32;
+      const cellWidth = 26;
+      const cellHeight = 22;
+      const headers = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+      // Draw Day Name Headers
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      headers.forEach((h, i) => {
+        const x = startX + (i * cellWidth);
+        doc.setFillColor(240, 244, 248);
+        doc.rect(x, startY - 7, cellWidth, 7, 'F');
+        doc.setDrawColor(200, 200, 200);
+        doc.rect(x, startY - 7, cellWidth, 7, 'S');
+        doc.text(h, x + (cellWidth / 2), startY - 2, { align: 'center' });
+      });
+
+      // Map events by date key for quick lookup
+      const eventMap = {};
+      events.forEach(e => { eventMap[e.date] = e; });
+
+      // Determine calendar grid bounds based on actual dates
+      if (events.length > 0) {
+        const firstEventDate = new Date(events[0].date);
+        let year = firstEventDate.getFullYear();
+        let month = firstEventDate.getMonth();
+
+        let firstDayOfMonth = new Date(year, month, 1);
+        let daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        // Convert Sunday (0) -> 6, Monday (1) -> 0 for Mon-Sun alignment
+        let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
+
+        let currentDay = 1;
+        let row = 0;
+
+        while (currentDay <= daysInMonth) {
+          for (let col = 0; col < 7; col++) {
+            if (row === 0 && col < startingDay) {
+              // Empty leading square before 1st of month
+              const x = startX + (col * cellWidth);
+              const y = startY + (row * cellHeight);
+              doc.setDrawColor(230, 230, 230);
+              doc.rect(x, y, cellWidth, cellHeight, 'S');
+            } else if (currentDay <= daysInMonth) {
+              const x = startX + (col * cellWidth);
+              const y = startY + (row * cellHeight);
+
+              doc.setDrawColor(200, 200, 200);
+              doc.rect(x, y, cellWidth, cellHeight, 'S');
+
+              // Date number label
+              doc.setFontSize(9);
+              doc.setFont("helvetica", "bold");
+              doc.setTextColor(50, 50, 50);
+              doc.text(String(currentDay), x + 2, y + 5);
+
+              // Match date with event
+              let monthStr = String(month + 1).padStart(2, '0');
+              let dayStr = String(currentDay).padStart(2, '0');
+              let dateKey = `${year}-${monthStr}-${dayStr}`;
+
+              let ev = eventMap[dateKey];
+              if (ev) {
+                if (ev.isOffDay) {
+                  doc.setFontSize(8);
+                  doc.setFont("helvetica", "normal");
+                  doc.setTextColor(150, 150, 150);
+                  doc.text("OFF", x + (cellWidth / 2), y + 13, { align: 'center' });
+                } else {
+                  // Shorten location for compact box fitting
+                  let locShort = ev.location;
+                  let matchLoc = ev.location.match(/\(([^)]+)\)/);
+                  if (matchLoc) {
+                    locShort = matchLoc[1];
+                  }
+
+                  doc.setFontSize(8);
+                  doc.setFont("helvetica", "bold");
+                  doc.setTextColor(0, 112, 243);
+                  doc.text(locShort, x + (cellWidth / 2), y + 11, { align: 'center' });
+
+                  let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
+                  doc.setFontSize(6.5);
+                  doc.setFont("helvetica", "normal");
+                  doc.setTextColor(80, 80, 80);
+                  doc.text(timeStr, x + (cellWidth / 2), y + 17, { align: 'center' });
+                }
+              }
+
+              currentDay++;
+            }
+          }
+          row++;
+        }
+      }
 
       doc.save(filename);
     }
