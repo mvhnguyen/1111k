@@ -645,7 +645,6 @@
       
         let revEvents = revRes.finalEvents;
       
-        let mergedEventsMap = { ...origMap };
         let diffMap = {};
         let updatedShiftsOnly = [];
       
@@ -655,13 +654,11 @@
           if (!origEv) {
             // New date entry not present in original summary
             diffMap[revEv.date] = true;
-            mergedEventsMap[revEv.date] = revEv;
             if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
           } else {
-            // If location is unchanged or updated explicitly, compare times
             let isLocationSame = origEv.location === revEv.location;
             
-            // If location is identical and new roster has missing/TBD time, retain original time
+            // Retain original time if location is identical and new roster lacks time details
             if (isLocationSame && revEv.isTimeMissing && !origEv.isTimeMissing) {
               revEv.start = origEv.start;
               revEv.end = origEv.end;
@@ -676,15 +673,15 @@
       
             if (isDifferent) {
               diffMap[revEv.date] = true;
-              mergedEventsMap[revEv.date] = revEv;
               if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
             }
           }
         });
       
-        let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
+        // Sort updated shifts chronologically
+        updatedShiftsOnly.sort((a, b) => a.date.localeCompare(b.date));
       
-        return { fullMergedList, updatedShiftsOnly, diffMap };
+        return { fullMergedList: updatedShiftsOnly, updatedShiftsOnly, diffMap };
       }
 
     icsDiffBtn.addEventListener('click', async () => {
