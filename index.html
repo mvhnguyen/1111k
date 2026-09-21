@@ -631,46 +631,61 @@
     }
 
     async function computeScheduleDiff() {
-      revLog.textContent = "Parsing original generated summary and updated roster PDFs...\n";
+        revLog.textContent = "Parsing original generated summary and updated roster PDFs...\n";
+        
+        // 1. Get baseline events map from Box A
+        let origMap = await parseGeneratedPdf(generatedFile);
+        
+        // 2. Get updated roster events from Box B
+        let revRes = await parsePdfFileList(filesListRev);
       
-      let origMap = await parseGeneratedPdf(generatedFile);
-      let revRes = await parsePdfFileList(filesListRev);
-
-      detectedMonthCode = revRes.localMonthCode;
-      detectedMonthStr = revRes.localMonthStr;
-      detectedYearStr = revRes.localYearStr;
-
-      let revEvents = revRes.finalEvents;
-
-      let mergedEventsMap = { ...origMap };
-      let diffMap = {};
-      let updatedShiftsOnly = [];
-
-      revEvents.forEach(revEv => {
-        let origEv = origMap[revEv.date];
-
-        if (!origEv) {
-          diffMap[revEv.date] = true;
-          mergedEventsMap[revEv.date] = revEv;
-          if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
-        } else {
-          let isDifferent = (origEv.start !== revEv.start) ||
-                            (origEv.end !== revEv.end) ||
-                            (origEv.location !== revEv.location) ||
-                            (origEv.isOffDay !== revEv.isOffDay);
-
-          if (isDifferent) {
+        detectedMonthCode = revRes.localMonthCode;
+        detectedMonthStr = revRes.localMonthStr;
+        detectedYearStr = revRes.localYearStr;
+      
+        let revEvents = revRes.finalEvents;
+      
+        let mergedEventsMap = { ...origMap };
+        let diffMap = {};
+        let updatedShiftsOnly = [];
+      
+        revEvents.forEach(revEv => {
+          let origEv = origMap[revEv.date];
+      
+          if (!origEv) {
+            // New date entry not present in original summary
             diffMap[revEv.date] = true;
             mergedEventsMap[revEv.date] = revEv;
             if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+          } else {
+            // If location is unchanged or updated explicitly, compare times
+            let isLocationSame = origEv.location === revEv.location;
+            
+            // If location is identical and new roster has missing/TBD time, retain original time
+            if (isLocationSame && revEv.isTimeMissing && !origEv.isTimeMissing) {
+              revEv.start = origEv.start;
+              revEv.end = origEv.end;
+              revEv.isTimeMissing = false;
+            }
+      
+            // Check if there is an actual functional change in shift details
+            let isDifferent = (origEv.start !== revEv.start) ||
+                              (origEv.end !== revEv.end) ||
+                              (origEv.location !== revEv.location) ||
+                              (origEv.isOffDay !== revEv.isOffDay);
+      
+            if (isDifferent) {
+              diffMap[revEv.date] = true;
+              mergedEventsMap[revEv.date] = revEv;
+              if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+            }
           }
-        }
-      });
-
-      let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
-
-      return { fullMergedList, updatedShiftsOnly, diffMap };
-    }
+        });
+      
+        let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
+      
+        return { fullMergedList, updatedShiftsOnly, diffMap };
+      }
 
     icsDiffBtn.addEventListener('click', async () => {
       let { updatedShiftsOnly } = await computeScheduleDiff();
