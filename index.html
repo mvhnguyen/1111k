@@ -184,16 +184,46 @@
       return rawTime;
     }
 
-    function parseShiftTime(text) {
-      let match = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
-      if (match) {
-        return {
-          start: formatTimeString(match[1]),
-          end: formatTimeString(match[2])
-        };
-      }
-      return null;
+    function calculateDefaultEndTime(startTimeStr) {
+      let [hours, minutes] = startTimeStr.split(':').map(Number);
+      let endHours = (hours + 9) % 24;
+      let formattedEndHours = String(endHours).padStart(2, '0');
+      let formattedMinutes = String(minutes).padStart(2, '0');
+      return `${formattedEndHours}:${formattedMinutes}`;
     }
+
+    function parseShiftTime(text) {
+          // 1. Standard range format: "08:30-17:30" or "0830-1730"
+          let rangeMatch = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
+          if (rangeMatch) {
+            return {
+              start: formatTimeString(rangeMatch[1]),
+              end: formatTimeString(rangeMatch[2])
+            };
+          }
+    
+          // 2. Embedded store code + 4-digit time: "PP0830", "CY 0900", "SK0830"
+          let embeddedMatch = text.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
+          if (embeddedMatch) {
+            let startStr = formatTimeString(embeddedMatch[1]);
+            return {
+              start: startStr,
+              end: calculateDefaultEndTime(startStr)
+            };
+          }
+    
+          // 3. Standalone 4-digit or formatted time: "0830" or "08:30"
+          let singleTimeMatch = text.match(/\b(\d{1,2}:?\d{2})\b/);
+          if (singleTimeMatch) {
+            let startStr = formatTimeString(singleTimeMatch[1]);
+            return {
+              start: startStr,
+              end: calculateDefaultEndTime(startStr)
+            };
+          }
+    
+          return null;
+        }
 
     async function parsePdfFileList(inputFiles) {
       let rawEntriesByDate = {}; 
@@ -252,7 +282,6 @@
 
           if (columns.length === 0) continue;
 
-          // Locate specified target person in the PDF text
           let personItem = items.find(i => i.str.toLowerCase() === targetName.toLowerCase());
           if (!personItem) continue;
 
@@ -315,25 +344,22 @@
             isOffDay = true;
           }
 
+          // Check for embedded location codes inside the cell text (e.g. PP0830 -> PP)
+          for (let code in locationMap) {
+            let codeRegex = new RegExp(`\\b${code}`, 'i');
+            if (codeRegex.test(entry.cellText)) {
+              actualLocationName = locationMap[code];
+              break;
+            }
+          }
+
           let parsedTime = parseShiftTime(entry.cellText);
           if (parsedTime && !primaryShiftTime) {
             primaryShiftTime = parsedTime;
-            actualLocationName = entry.sourceStoreName;
           }
         });
 
-        if (!actualLocationName) {
-          for (let entry of entries) {
-            for (let code in locationMap) {
-              if (new RegExp(`\\b${code}\\b`, 'i').test(entry.cellText)) {
-                actualLocationName = locationMap[code];
-                break;
-              }
-            }
-            if (actualLocationName) break;
-          }
-        }
-
+        // Fall back to the file's home store if no cross-store code was present in the cell text
         if (!actualLocationName && entries.length > 0) {
           actualLocationName = entries[0].sourceStoreName;
         }
