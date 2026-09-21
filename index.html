@@ -2,59 +2,178 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Monthly Schedule Generator & Revision Tool</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #333; }
-    .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 10px; padding: 24px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
-    .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 30px 20px; text-align: center; background: #f7f9fa; cursor: pointer; transition: background 0.2s; }
-    .dropzone:hover { background: #f0f4f8; }
-    .dropzone.revision { border-color: #10b981; background: #f0fdf4; }
-    .dropzone.revision:hover { background: #dcfce7; }
-    .btn-group { display: flex; gap: 10px; margin-top: 15px; }
-    button { flex: 1; background: #0070f3; color: white; border: none; padding: 12px 15px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
-    button.revision-btn { background: #10b981; }
-    button.revision-btn:hover { background: #059669; }
-    button:disabled { background: #ccc !important; cursor: not-allowed; }
-    .log-box { margin-top: 15px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
-    .input-group { margin-bottom: 20px; }
-    .input-group label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
-    .input-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
-    h2 { margin-top: 0; font-size: 20px; color: #111; }
-    h3 { margin-top: 0; font-size: 14px; color: #444; }
-    /* Responsive adjustments for mobile viewports */
-    @media (max-width: 768px) {
-      /* Stack dual file drop zones vertically */
-      .upload-container, .comparison-grid {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
+    :root {
+      --primary: #0070f3;
+      --primary-hover: #005bb5;
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 20px 16px;
+      color: var(--text);
+      background-color: var(--bg);
+      line-height: 1.5;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    }
+
+    .dropzone {
+      border: 2px dashed var(--primary);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      background: #f0f7ff;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      touch-action: manipulation;
+    }
+
+    .dropzone:hover, .dropzone:active {
+      background: #e0f0ff;
+    }
+
+    .dropzone.revision {
+      border-color: var(--accent);
+      background: #f0fdf4;
+    }
+
+    .dropzone.revision:hover, .dropzone.revision:active {
+      background: #dcfce7;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    @media (min-width: 520px) {
+      .btn-group {
+        flex-direction: row;
       }
-    
-      /* Expand touch targets for file removal & buttons */
-      button, .file-item-remove {
-        min-height: 44px;
-        min-width: 44px;
-        font-size: 16px; /* Prevents auto-zoom on iOS inputs */
+    }
+
+    button {
+      flex: 1;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+      min-height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    button:hover { background: var(--primary-hover); }
+
+    button.revision-btn { background: var(--accent); }
+    button.revision-btn:hover { background: var(--accent-hover); }
+
+    button:disabled {
+      background: #cbd5e1 !important;
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    .log-box {
+      margin-top: 16px;
+      white-space: pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      background: #0f172a;
+      color: #f1f5f9;
+      padding: 14px;
+      border-radius: 8px;
+      max-height: 220px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 580px) {
+      .grid-2 {
+        grid-template-columns: 1fr 1fr;
       }
-    
-      /* Enable horizontal scroll container for wide tables */
-      .table-responsive {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-      }
+    }
+
+    .input-group {
+      margin-bottom: 0;
+    }
+
+    .input-group label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .input-group input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    h2 {
+      margin-top: 0;
+      font-size: 18px;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h3 {
+      margin-top: 0;
+      font-size: 14px;
+      color: var(--text-muted);
     }
   </style>
 </head>
 <body>
 
   <!-- ================= PERSON SELECTOR CONFIG ================= -->
-  <div class="card" style="border-color: #0070f3; background: #f4f8ff;">
+  <div class="card" style="border-color: var(--primary); background: #f4f8ff;">
     <h2>👤 Target Person Configuration</h2>
-    <div class="input-group" style="margin-bottom: 0;">
+    <div class="input-group">
       <label for="personNameInput">Enter target name to scan from roster (e.g., Kevin, Alex, Sarah):</label>
       <input type="text" id="personNameInput" value="Kevin" placeholder="Enter name...">
     </div>
@@ -62,9 +181,9 @@
 
   <!-- ================= SECTION 1: STABLE MONTHLY GENERATOR ================= -->
   <div class="card">
-    <h2>Monthly Schedule Generator</h2>
+    <h2>📄 Monthly Schedule Generator</h2>
     <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-      <p>📄 Drop baseline schedule PDFs here or click to upload</p>
+      <p style="margin: 0; font-weight: 500;">📄 Drop baseline schedule PDFs here or tap to upload</p>
       <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
     </div>
 
@@ -77,9 +196,9 @@
   </div>
 
   <!-- ================= SECTION 2: SCHEDULE REVISION ENGINE ================= -->
-  <div class="card" style="border-color: #10b981;">
+  <div class="card" style="border-color: var(--accent);">
     <h2>🔄 Schedule Revision & Comparison Tool</h2>
-    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
       Drop your previously generated summary PDF into Box A, and the newly updated roster PDF into Box B to calculate changes.
     </p>
 
@@ -87,14 +206,14 @@
       <div>
         <h3>Box A: Generated Summary PDF</h3>
         <div class="dropzone" id="dropzoneGenerated" onclick="document.getElementById('fileInputGenerated').click()">
-          <p style="font-size: 13px;">📄 Drop Generated PDF</p>
+          <p style="font-size: 13px; margin: 0;">📄 Drop Generated PDF</p>
           <input type="file" id="fileInputGenerated" accept="application/pdf" style="display:none">
         </div>
       </div>
       <div>
         <h3>Box B: Updated Roster PDF(s)</h3>
         <div class="dropzone revision" id="dropzoneRev" onclick="document.getElementById('fileInputRev').click()">
-          <p style="font-size: 13px;">📄 Drop Updated Roster</p>
+          <p style="font-size: 13px; margin: 0;">📄 Drop Updated Roster</p>
           <input type="file" id="fileInputRev" multiple accept="application/pdf" style="display:none">
         </div>
       </div>
@@ -215,37 +334,37 @@
     }
 
     function parseShiftTime(text) {
-          // 1. Standard range format: "08:30-17:30" or "0830-1730"
-          let rangeMatch = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
-          if (rangeMatch) {
-            return {
-              start: formatTimeString(rangeMatch[1]),
-              end: formatTimeString(rangeMatch[2])
-            };
-          }
-    
-          // 2. Embedded store code + 4-digit time: "PP0830", "CY 0900", "SK0830"
-          let embeddedMatch = text.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
-          if (embeddedMatch) {
-            let startStr = formatTimeString(embeddedMatch[1]);
-            return {
-              start: startStr,
-              end: calculateDefaultEndTime(startStr)
-            };
-          }
-    
-          // 3. Standalone 4-digit or formatted time: "0830" or "08:30"
-          let singleTimeMatch = text.match(/\b(\d{1,2}:?\d{2})\b/);
-          if (singleTimeMatch) {
-            let startStr = formatTimeString(singleTimeMatch[1]);
-            return {
-              start: startStr,
-              end: calculateDefaultEndTime(startStr)
-            };
-          }
-    
-          return null;
-        }
+      // 1. Standard range format: "08:30-17:30" or "0830-1730" or "0715-1615"
+      let rangeMatch = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
+      if (rangeMatch) {
+        return {
+          start: formatTimeString(rangeMatch[1]),
+          end: formatTimeString(rangeMatch[2])
+        };
+      }
+
+      // 2. Embedded store code + 4-digit time: "PP0830", "CY 0900", "SK0830"
+      let embeddedMatch = text.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
+      if (embeddedMatch) {
+        let startStr = formatTimeString(embeddedMatch[1]);
+        return {
+          start: startStr,
+          end: calculateDefaultEndTime(startStr)
+        };
+      }
+
+      // 3. Standalone 4-digit or formatted time: "0830" or "08:30"
+      let singleTimeMatch = text.match(/\b(\d{1,2}:?\d{2})\b/);
+      if (singleTimeMatch) {
+        let startStr = formatTimeString(singleTimeMatch[1]);
+        return {
+          start: startStr,
+          end: calculateDefaultEndTime(startStr)
+        };
+      }
+
+      return null;
+    }
 
     async function parsePdfFileList(inputFiles) {
       let rawEntriesByDate = {}; 
@@ -307,8 +426,9 @@
           let personItem = items.find(i => i.str.toLowerCase() === targetName.toLowerCase());
           if (!personItem) continue;
 
+          // Tight Y-threshold (8px) to prevent vertical BLEED from adjacent staff rows
           let personRowItems = items.filter(i => 
-            Math.abs(i.y - personItem.y) < 14 && 
+            Math.abs(i.y - personItem.y) <= 8 && 
             i.str.toLowerCase() !== targetName.toLowerCase() && 
             i.str !== "FT" &&
             i.x >= minX && 
@@ -316,7 +436,8 @@
           );
 
           columns.forEach(col => {
-            let matched = personRowItems.filter(i => Math.abs(i.x - col.x) < 25);
+            // Tight X-threshold (18px) to prevent HORIZONTAL bleed between daily columns
+            let matched = personRowItems.filter(i => Math.abs(i.x - col.x) <= 18);
             if (matched.length === 0) return;
 
             let cellText = matched.map(m => m.str).join(" ").trim();
@@ -359,14 +480,28 @@
         let isOffDay = false;
         let combinedRaw = [];
 
+        // Pre-pass: Check if any entry explicitly contains a valid active shift time or embedded store code
+        let activeShiftEntry = entries.find(e => {
+          let hasRange = /(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/.test(e.cellText);
+          let hasEmbedded = /(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i.test(e.cellText);
+          return hasRange || hasEmbedded;
+        });
+
         entries.forEach(entry => {
           combinedRaw.push(`${entry.sourceStoreCode}: ${entry.cellText}`);
           
-          if (/^(x|x \(w2\)|al|sl|cl|rdu)$/i.test(entry.cellText) || entry.cellText.toLowerCase().startsWith("x ")) {
+          let tokens = entry.cellText.toLowerCase().split(/\s+/);
+          let hasOffToken = tokens.some(t => ['x', 'x (w2)', 'al', 'sl', 'cl', 'rdu', 'off'].includes(t)) || 
+                             entry.cellText.toLowerCase().startsWith("x ");
+
+          // Parse potential shift time explicitly from this cell's text
+          let parsedTime = parseShiftTime(entry.cellText);
+
+          if (hasOffToken && !parsedTime) {
             isOffDay = true;
           }
 
-          // Check for embedded location codes inside the cell text (e.g. PP0830 -> PP)
+          // Detect location from embedded location codes
           for (let code in locationMap) {
             let codeRegex = new RegExp(`\\b${code}`, 'i');
             if (codeRegex.test(entry.cellText)) {
@@ -375,13 +510,20 @@
             }
           }
 
-          let parsedTime = parseShiftTime(entry.cellText);
           if (parsedTime && !primaryShiftTime) {
             primaryShiftTime = parsedTime;
+            if (!actualLocationName) {
+              actualLocationName = entry.sourceStoreName;
+            }
           }
         });
 
-        // Fall back to the file's home store if no cross-store code was present in the cell text
+        // RECONCILIATION RULE: If an active shift with valid times exists in one store, override pure 'x' off indicators
+        if (activeShiftEntry && primaryShiftTime) {
+          isOffDay = false;
+        }
+
+        // Fall back to the primary store if location wasn't detected inside cell text
         if (!actualLocationName && entries.length > 0) {
           actualLocationName = entries[0].sourceStoreName;
         }
@@ -393,7 +535,7 @@
           start: primaryShiftTime ? primaryShiftTime.start : null,
           end: primaryShiftTime ? primaryShiftTime.end : null,
           isTimeMissing: !primaryShiftTime && !isOffDay,
-          location: isOffDay && !primaryShiftTime ? 'OFF' : actualLocationName,
+          location: (isOffDay && !primaryShiftTime) ? 'OFF' : actualLocationName,
           raw: combinedRaw.join(" | ")
         });
       }
@@ -506,7 +648,9 @@
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//Shift Schedule Extractor//EN'
+        'PRODID:-//Shift Schedule Extractor//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH'
       ];
 
       events.forEach(e => {
@@ -534,8 +678,10 @@
       const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(blob);
-      link.download = filename;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
     }
 
     function generatePDF(events, filename, diffMap = {}) {
