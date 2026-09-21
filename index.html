@@ -21,7 +21,7 @@
     .log-box { margin-top: 15px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
     .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
     h2 { margin-top: 0; font-size: 20px; color: #111; }
-    h3 { margin-top: 0; font-size: 15px; color: #444; }
+    h3 { margin-top: 0; font-size: 14px; color: #444; }
   </style>
 </head>
 <body>
@@ -46,21 +46,21 @@
   <div class="card" style="border-color: #10b981;">
     <h2>🔄 Schedule Revision & Comparison Tool</h2>
     <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
-      Upload your original PDF schedule(s) in Box A and the newly updated PDF schedule(s) in Box B to compare and generate revised exports with highlighted changes.
+      Drop your previously generated summary PDF into Box A, and the newly updated roster PDF into Box B to calculate changes.
     </p>
 
     <div class="grid-2">
       <div>
-        <h3>Box A: Original PDF(s)</h3>
-        <div class="dropzone" id="dropzoneOrig" onclick="document.getElementById('fileInputOrig').click()">
-          <p style="font-size: 13px;">📄 Drop Original PDFs</p>
-          <input type="file" id="fileInputOrig" multiple accept="application/pdf" style="display:none">
+        <h3>Box A: Generated Summary PDF</h3>
+        <div class="dropzone" id="dropzoneGenerated" onclick="document.getElementById('fileInputGenerated').click()">
+          <p style="font-size: 13px;">📄 Drop Generated PDF</p>
+          <input type="file" id="fileInputGenerated" accept="application/pdf" style="display:none">
         </div>
       </div>
       <div>
-        <h3>Box B: Updated PDF(s)</h3>
+        <h3>Box B: Updated Roster PDF(s)</h3>
         <div class="dropzone revision" id="dropzoneRev" onclick="document.getElementById('fileInputRev').click()">
-          <p style="font-size: 13px;">📄 Drop Updated PDFs</p>
+          <p style="font-size: 13px;">📄 Drop Updated Roster</p>
           <input type="file" id="fileInputRev" multiple accept="application/pdf" style="display:none">
         </div>
       </div>
@@ -71,7 +71,7 @@
       <button id="pdfDiffBtn" class="revision-btn" disabled>📄 Export Revised PDF (Highlighted)</button>
     </div>
 
-    <div class="log-box" id="revLog">Upload both Original and Updated PDFs to enable revision mode...</div>
+    <div class="log-box" id="revLog">Upload both files to enable revision mode...</div>
   </div>
 
   <script>
@@ -99,14 +99,12 @@
 
     const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
 
-    // Variables for Section 1
     let filesList = [];
     let detectedMonthCode = "09";
     let detectedMonthStr = "SEPTEMBER";
     let detectedYearStr = "2026";
 
-    // Variables for Section 2
-    let filesListOrig = [];
+    let generatedFile = null;
     let filesListRev = [];
 
     const fileInput = document.getElementById('fileInput');
@@ -336,6 +334,58 @@
       return { finalEvents, localMonthCode, localMonthStr, localYearStr };
     }
 
+    // Function to parse a previously generated Summary PDF (Box A)
+    async function parseGeneratedPdf(file) {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      let eventsMap = {};
+      const page = await pdf.getPage(1);
+      const textContent = await page.getTextContent();
+      let lines = {};
+
+      textContent.items.forEach(item => {
+        let y = Math.round(item.transform[5]);
+        if (!lines[y]) lines[y] = [];
+        lines[y].push(item.str.trim());
+      });
+
+      let sortedY = Object.keys(lines).sort((a, b) => b - a);
+
+      sortedY.forEach(y => {
+        let rowStr = lines[y].join(" ");
+        let dateMatch = rowStr.match(/(\d{4}-\d{2}-\d{2})/);
+        if (dateMatch) {
+          let dateKey = dateMatch[1];
+          let isOff = rowStr.includes(" OFF ");
+          let parsedTime = parseShiftTime(rowStr);
+          
+          let location = "OFF";
+          if (!isOff) {
+            for (let code in locationMap) {
+              if (rowStr.includes(locationMap[code])) {
+                location = locationMap[code];
+                break;
+              }
+            }
+          }
+
+          eventsMap[dateKey] = {
+            date: dateKey,
+            dayNum: parseInt(dateKey.split('-')[2], 10),
+            isOffDay: isOff,
+            start: parsedTime ? parsedTime.start : null,
+            end: parsedTime ? parsedTime.end : null,
+            isTimeMissing: !parsedTime && !isOff,
+            location: location,
+            raw: `Original Summary: ${rowStr}`
+          };
+        }
+      });
+
+      return eventsMap;
+    }
+
     async function parseScheduleEvents() {
       log.textContent = "Processing PDF pages...\n";
       let res = await parsePdfFileList(filesList);
@@ -429,8 +479,8 @@
           if (data.section === 'body') {
             let rowDate = events[data.row.index].date;
             if (diffMap[rowDate]) {
-              data.cell.styles.fillColor = [220, 252, 231]; // Soft green background for updated rows
-              data.cell.styles.textColor = [6, 95, 70];    // Dark green text
+              data.cell.styles.fillColor = [220, 252, 231]; 
+              data.cell.styles.textColor = [6, 95, 70];    
               data.cell.styles.fontStyle = 'bold';
             }
           }
@@ -462,7 +512,6 @@
         doc.text(h, x + (cellWidth / 2), startY - 2, { align: 'center' });
       });
 
-      // Map events by date key for fast lookup
       const eventMap = {};
       events.forEach(e => { eventMap[e.date] = e; });
 
@@ -497,7 +546,6 @@
             doc.setTextColor(100, 100, 100);
             doc.text(String(currentDay), x + 2, y + 4.5);
 
-            // Match current calendar grid cell date key
             let monthStr = String(gridMonthIdx + 1).padStart(2, '0');
             let dayStr = String(currentDay).padStart(2, '0');
             let dateKey = `${gridYear}-${monthStr}-${dayStr}`;
@@ -522,9 +570,9 @@
                 doc.setFontSize(13.5);
                 doc.setFont("helvetica", "bold");
                 if (isUpdated) {
-                  doc.setTextColor(16, 185, 129); // Green accent for revisions
+                  doc.setTextColor(16, 185, 129);
                 } else {
-                  doc.setTextColor(0, 112, 243);  // Standard Blue
+                  doc.setTextColor(0, 112, 243);
                 }
                 doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
 
@@ -549,58 +597,52 @@
     // =========================================================================
     // SECTION 2: REVISION ENGINE HANDLERS
     // =========================================================================
-    const fileInputOrig = document.getElementById('fileInputOrig');
+    const fileInputGenerated = document.getElementById('fileInputGenerated');
     const fileInputRev = document.getElementById('fileInputRev');
-    const dropzoneOrig = document.getElementById('dropzoneOrig');
+    const dropzoneGenerated = document.getElementById('dropzoneGenerated');
     const dropzoneRev = document.getElementById('dropzoneRev');
     const icsDiffBtn = document.getElementById('icsDiffBtn');
     const pdfDiffBtn = document.getElementById('pdfDiffBtn');
     const revLog = document.getElementById('revLog');
 
-    fileInputOrig.addEventListener('change', (e) => { filesListOrig = Array.from(e.target.files); checkRevStatus(); });
+    fileInputGenerated.addEventListener('change', (e) => { generatedFile = e.target.files[0] || null; checkRevStatus(); });
     fileInputRev.addEventListener('change', (e) => { filesListRev = Array.from(e.target.files); checkRevStatus(); });
 
-    dropzoneOrig.addEventListener('dragover', (e) => e.preventDefault());
-    dropzoneOrig.addEventListener('drop', (e) => { e.preventDefault(); filesListOrig = Array.from(e.dataTransfer.files); checkRevStatus(); });
+    dropzoneGenerated.addEventListener('dragover', (e) => e.preventDefault());
+    dropzoneGenerated.addEventListener('drop', (e) => { e.preventDefault(); generatedFile = e.dataTransfer.files[0] || null; checkRevStatus(); });
 
     dropzoneRev.addEventListener('dragover', (e) => e.preventDefault());
     dropzoneRev.addEventListener('drop', (e) => { e.preventDefault(); filesListRev = Array.from(e.dataTransfer.files); checkRevStatus(); });
 
     function checkRevStatus() {
       let msg = [];
-      if (filesListOrig.length > 0) msg.push(`Box A: ${filesListOrig.length} file(s)`);
-      if (filesListRev.length > 0) msg.push(`Box B: ${filesListRev.length} file(s)`);
+      if (generatedFile) msg.push(`Box A: ${generatedFile.name}`);
+      if (filesListRev.length > 0) msg.push(`Box B: ${filesListRev.length} updated file(s)`);
 
-      if (filesListOrig.length > 0 && filesListRev.length > 0) {
+      if (generatedFile && filesListRev.length > 0) {
         revLog.textContent = "Ready to analyze changes:\n" + msg.join("\n");
         icsDiffBtn.disabled = false;
         pdfDiffBtn.disabled = false;
       } else {
-        revLog.textContent = msg.join("\n") || "Upload both Original and Updated PDFs to enable revision mode...";
+        revLog.textContent = msg.join("\n") || "Upload both files to enable revision mode...";
         icsDiffBtn.disabled = true;
         pdfDiffBtn.disabled = true;
       }
     }
 
     async function computeScheduleDiff() {
-      revLog.textContent = "Parsing original and updated schedule PDFs...\n";
+      revLog.textContent = "Parsing original generated summary and updated roster PDFs...\n";
       
-      let origRes = await parsePdfFileList(filesListOrig);
+      let origMap = await parseGeneratedPdf(generatedFile);
       let revRes = await parsePdfFileList(filesListRev);
 
       detectedMonthCode = revRes.localMonthCode;
       detectedMonthStr = revRes.localMonthStr;
       detectedYearStr = revRes.localYearStr;
 
-      let origEvents = origRes.finalEvents;
       let revEvents = revRes.finalEvents;
 
-      let origMap = {};
-      origEvents.forEach(e => { origMap[e.date] = e; });
-
-      let mergedEventsMap = {};
-      origEvents.forEach(e => { mergedEventsMap[e.date] = e; });
-
+      let mergedEventsMap = { ...origMap };
       let diffMap = {};
       let updatedShiftsOnly = [];
 
@@ -608,12 +650,10 @@
         let origEv = origMap[revEv.date];
 
         if (!origEv) {
-          // Completely new date entry
           diffMap[revEv.date] = true;
           mergedEventsMap[revEv.date] = revEv;
           if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
         } else {
-          // Check for differences in timing, location, or off status
           let isDifferent = (origEv.start !== revEv.start) ||
                             (origEv.end !== revEv.end) ||
                             (origEv.location !== revEv.location) ||
