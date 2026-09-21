@@ -445,14 +445,14 @@
                 }
 
                 // Larger Location Text
-                doc.setFontSize(15);
+                doc.setFontSize(13.5);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(0, 112, 243);
                 doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
 
                 // Larger Time Text
                 let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
-                doc.setFontSize(12);
+                doc.setFontSize(10);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(40, 40, 40);
                 doc.text(timeStr, x + (cellWidth / 2), y + 17.5, { align: 'center' });
