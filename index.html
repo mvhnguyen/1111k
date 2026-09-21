@@ -57,7 +57,7 @@
     const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
 
     let filesList = [];
-    let detectedMonthStr = "SEPTEMBER"; // Default fallback month name for file export
+    let detectedMonthStr = "SEPTEMBER";
     let detectedYearStr = "2026";
 
     const fileInput = document.getElementById('fileInput');
@@ -137,7 +137,6 @@
       for (let file of filesList) {
         const fileMeta = extractMetadataFromFileName(file.name);
         
-        // Track the detected month for dynamic output filenames
         detectedYearStr = fileMeta.year;
         if (monthNamesUpper[fileMeta.month]) {
           detectedMonthStr = monthNamesUpper[fileMeta.month];
@@ -162,7 +161,8 @@
             if (found) headers.push({ name: d, x: found.x, y: found.y });
           });
 
-          if (headers.length < 5) continue;
+          // Allow partial pages (e.g., month ending with 1 to 4 days)
+          if (headers.length < 1) continue;
 
           headers.sort((a, b) => a.x - b.x);
 
@@ -200,25 +200,19 @@
             if (matched.length === 0) return;
 
             let cellText = matched.map(m => m.str).join(" ").trim();
-            
-            // Ignore Off Days / Leaves
-            if (/^(x|x \(w2\)|al|sl|cl|rdu)$/i.test(cellText) || cellText.toLowerCase().startsWith("x ")) {
-              return;
-            }
 
-            // NEW CODE: Handles previous month dates (e.g., Aug 31 at the start of a Sept roster)
+            // Calculate cross-month dates (e.g., Aug 31 at the start of a Sept roster)
             let targetYear = parseInt(fileMeta.year, 10);
             let targetMonth = parseInt(fileMeta.month, 10);
-            
-            // If day number is high (e.g. 28-31) in the very first week column, it belongs to the previous month
-            if (col.dayNum > 25 && columns.indexOf(col) < 3) {
+
+            if (col.dayNum > 25 && columns.indexOf(col) < 3 && pageNum === 1) {
               targetMonth -= 1;
               if (targetMonth === 0) {
                 targetMonth = 12;
                 targetYear -= 1;
               }
             }
-            
+
             let monthFormatted = String(targetMonth).padStart(2, '0');
             let dayFormatted = String(col.dayNum).padStart(2, '0');
             let dateKey = `${targetYear}-${monthFormatted}-${dayFormatted}`;
@@ -243,11 +237,16 @@
         let entries = rawEntriesByDate[dateKey];
         let primaryShiftTime = null;
         let actualLocationName = null;
+        let isOffDay = false;
         let combinedRaw = [];
 
-        // 1. Check all entries for explicit numerical shift times
         entries.forEach(entry => {
           combinedRaw.push(`${entry.sourceStoreCode}: ${entry.cellText}`);
+          
+          if (/^(x|x \(w2\)|al|sl|cl|rdu)$/i.test(entry.cellText) || entry.cellText.toLowerCase().startsWith("x ")) {
+            isOffDay = true;
+          }
+
           let parsedTime = parseShiftTime(entry.cellText);
           if (parsedTime && !primaryShiftTime) {
             primaryShiftTime = parsedTime;
@@ -255,7 +254,6 @@
           }
         });
 
-        // 2. Resolve destination store if an transfer code exists (e.g. "KT", "CY")
         if (!actualLocationName) {
           for (let entry of entries) {
             for (let code in locationMap) {
@@ -268,7 +266,6 @@
           }
         }
 
-        // Fallback store location assignment
         if (!actualLocationName && entries.length > 0) {
           actualLocationName = entries[0].sourceStoreName;
         }
@@ -276,10 +273,11 @@
         finalEvents.push({
           date: dateKey,
           dayNum: entries[0].dayNum,
+          isOffDay: isOffDay && !primaryShiftTime,
           start: primaryShiftTime ? primaryShiftTime.start : null,
           end: primaryShiftTime ? primaryShiftTime.end : null,
-          isTimeMissing: !primaryShiftTime,
-          location: actualLocationName,
+          isTimeMissing: !primaryShiftTime && !isOffDay,
+          location: isOffDay && !primaryShiftTime ? 'OFF' : actualLocationName,
           raw: combinedRaw.join(" | ")
         });
       }
@@ -289,13 +287,14 @@
 
     icsBtn.addEventListener('click', async () => {
       let uniqueEvents = await parseScheduleEvents();
-      if (uniqueEvents.length === 0) {
+      let workingShifts = uniqueEvents.filter(e => !e.isOffDay);
+      if (workingShifts.length === 0) {
         log.textContent += "\nNo active work shifts found for Kevin.";
         return;
       }
       const filename = `Kevin_Schedule_${detectedMonthStr}_${detectedYearStr}.ics`;
-      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading ${filename}...`;
-      downloadICS(uniqueEvents, filename);
+      log.textContent += `\nSuccessfully reconciled ${workingShifts.length} working shift days!\nDownloading ${filename}...`;
+      downloadICS(workingShifts, filename);
     });
 
     pdfBtn.addEventListener('click', async () => {
@@ -305,7 +304,7 @@
         return;
       }
       const filename = `Kevin_Schedule_${detectedMonthStr}_${detectedYearStr}.pdf`;
-      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} working shift days!\nDownloading ${filename}...`;
+      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} schedule days!\nDownloading ${filename}...`;
       generatePDF(uniqueEvents, filename);
     });
 
@@ -353,7 +352,7 @@
       const tableData = events.map(e => [
         e.date,
         e.location,
-        e.isTimeMissing ? 'TBD' : `${e.start} - ${e.end}`,
+        e.isOffDay ? 'OFF' : (e.isTimeMissing ? 'TBD' : `${e.start} - ${e.end}`),
         e.raw
       ]);
 
