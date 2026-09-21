@@ -394,14 +394,12 @@
       const eventMap = {};
       events.forEach(e => { eventMap[e.date] = e; });
 
-      // Target explicit target month/year rather than relying on events[0]
       let gridYear = parseInt(detectedYearStr, 10);
-      let gridMonthIdx = parseInt(detectedMonthCode, 10) - 1; // 0-indexed for JS Date
+      let gridMonthIdx = parseInt(detectedMonthCode, 10) - 1;
 
       let firstDayOfMonth = new Date(gridYear, gridMonthIdx, 1);
       let daysInMonth = new Date(gridYear, gridMonthIdx + 1, 0).getDate();
 
-      // Convert Sunday (0) -> 6, Monday (1) -> 0 for Mon-Sun alignment
       let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
 
       let currentDay = 1;
@@ -410,7 +408,6 @@
       while (currentDay <= daysInMonth) {
         for (let col = 0; col < 7; col++) {
           if (row === 0 && col < startingDay) {
-            // Empty leading square for previous month days
             const x = startX + (col * cellWidth);
             const y = startY + (row * cellHeight);
             doc.setDrawColor(230, 230, 230);
@@ -423,10 +420,10 @@
             doc.rect(x, y, cellWidth, cellHeight, 'S');
 
             // Date number label
-            doc.setFontSize(9);
+            doc.setFontSize(8.5);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(50, 50, 50);
-            doc.text(String(currentDay), x + 2, y + 5);
+            doc.setTextColor(100, 100, 100);
+            doc.text(String(currentDay), x + 2, y + 4.5);
 
             // Match current calendar grid cell date key
             let monthStr = String(gridMonthIdx + 1).padStart(2, '0');
@@ -436,28 +433,29 @@
             let ev = eventMap[dateKey];
             if (ev) {
               if (ev.isOffDay) {
-                doc.setFontSize(8);
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(150, 150, 150);
-                doc.text("OFF", x + (cellWidth / 2), y + 13, { align: 'center' });
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(180, 180, 180);
+                doc.text("OFF", x + (cellWidth / 2), y + 13.5, { align: 'center' });
               } else {
-                // Get display location (short code if present, otherwise full name)
                 let locShort = ev.location;
                 let matchLoc = ev.location.match(/\(([^)]+)\)/);
                 if (matchLoc) {
                   locShort = matchLoc[1];
                 }
 
-                doc.setFontSize(8);
+                // Larger Location Text
+                doc.setFontSize(9);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(0, 112, 243);
-                doc.text(locShort, x + (cellWidth / 2), y + 11, { align: 'center' });
+                doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
 
+                // Larger Time Text
                 let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
-                doc.setFontSize(6.5);
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(80, 80, 80);
-                doc.text(timeStr, x + (cellWidth / 2), y + 17, { align: 'center' });
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(40, 40, 40);
+                doc.text(timeStr, x + (cellWidth / 2), y + 17.5, { align: 'center' });
               }
             }
 
