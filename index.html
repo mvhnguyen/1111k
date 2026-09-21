@@ -57,6 +57,7 @@
     const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
 
     let filesList = [];
+    let detectedMonthCode = "09";
     let detectedMonthStr = "SEPTEMBER";
     let detectedYearStr = "2026";
 
@@ -138,6 +139,7 @@
         const fileMeta = extractMetadataFromFileName(file.name);
         
         detectedYearStr = fileMeta.year;
+        detectedMonthCode = fileMeta.month;
         if (monthNamesUpper[fileMeta.month]) {
           detectedMonthStr = monthNamesUpper[fileMeta.month];
         }
@@ -322,7 +324,7 @@
 
         icsContent.push(
           'BEGIN:VEVENT',
-          `SUMMARY:Work @ ${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`,
+          `SUMMARY:${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`,
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
           `LOCATION:${e.location}`,
@@ -388,84 +390,81 @@
         doc.text(h, x + (cellWidth / 2), startY - 2, { align: 'center' });
       });
 
-      // Map events by date key for quick lookup
+      // Map events by date key for fast lookup
       const eventMap = {};
       events.forEach(e => { eventMap[e.date] = e; });
 
-      // Determine calendar grid bounds based on actual dates
-      if (events.length > 0) {
-        const firstEventDate = new Date(events[0].date);
-        let year = firstEventDate.getFullYear();
-        let month = firstEventDate.getMonth();
+      // Target explicit target month/year rather than relying on events[0]
+      let gridYear = parseInt(detectedYearStr, 10);
+      let gridMonthIdx = parseInt(detectedMonthCode, 10) - 1; // 0-indexed for JS Date
 
-        let firstDayOfMonth = new Date(year, month, 1);
-        let daysInMonth = new Date(year, month + 1, 0).getDate();
+      let firstDayOfMonth = new Date(gridYear, gridMonthIdx, 1);
+      let daysInMonth = new Date(gridYear, gridMonthIdx + 1, 0).getDate();
 
-        // Convert Sunday (0) -> 6, Monday (1) -> 0 for Mon-Sun alignment
-        let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
+      // Convert Sunday (0) -> 6, Monday (1) -> 0 for Mon-Sun alignment
+      let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
 
-        let currentDay = 1;
-        let row = 0;
+      let currentDay = 1;
+      let row = 0;
 
-        while (currentDay <= daysInMonth) {
-          for (let col = 0; col < 7; col++) {
-            if (row === 0 && col < startingDay) {
-              // Empty leading square before 1st of month
-              const x = startX + (col * cellWidth);
-              const y = startY + (row * cellHeight);
-              doc.setDrawColor(230, 230, 230);
-              doc.rect(x, y, cellWidth, cellHeight, 'S');
-            } else if (currentDay <= daysInMonth) {
-              const x = startX + (col * cellWidth);
-              const y = startY + (row * cellHeight);
+      while (currentDay <= daysInMonth) {
+        for (let col = 0; col < 7; col++) {
+          if (row === 0 && col < startingDay) {
+            // Empty leading square for previous month days
+            const x = startX + (col * cellWidth);
+            const y = startY + (row * cellHeight);
+            doc.setDrawColor(230, 230, 230);
+            doc.rect(x, y, cellWidth, cellHeight, 'S');
+          } else if (currentDay <= daysInMonth) {
+            const x = startX + (col * cellWidth);
+            const y = startY + (row * cellHeight);
 
-              doc.setDrawColor(200, 200, 200);
-              doc.rect(x, y, cellWidth, cellHeight, 'S');
+            doc.setDrawColor(200, 200, 200);
+            doc.rect(x, y, cellWidth, cellHeight, 'S');
 
-              // Date number label
-              doc.setFontSize(9);
-              doc.setFont("helvetica", "bold");
-              doc.setTextColor(50, 50, 50);
-              doc.text(String(currentDay), x + 2, y + 5);
+            // Date number label
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(50, 50, 50);
+            doc.text(String(currentDay), x + 2, y + 5);
 
-              // Match date with event
-              let monthStr = String(month + 1).padStart(2, '0');
-              let dayStr = String(currentDay).padStart(2, '0');
-              let dateKey = `${year}-${monthStr}-${dayStr}`;
+            // Match current calendar grid cell date key
+            let monthStr = String(gridMonthIdx + 1).padStart(2, '0');
+            let dayStr = String(currentDay).padStart(2, '0');
+            let dateKey = `${gridYear}-${monthStr}-${dayStr}`;
 
-              let ev = eventMap[dateKey];
-              if (ev) {
-                if (ev.isOffDay) {
-                  doc.setFontSize(8);
-                  doc.setFont("helvetica", "normal");
-                  doc.setTextColor(150, 150, 150);
-                  doc.text("OFF", x + (cellWidth / 2), y + 13, { align: 'center' });
-                } else {
-                  // Shorten location for compact box fitting
-                  let locShort = ev.location;
-                  let matchLoc = ev.location.match(/\(([^)]+)\)/);
-                  if (matchLoc) {
-                    locShort = matchLoc[1];
-                  }
-
-                  doc.setFontSize(8);
-                  doc.setFont("helvetica", "bold");
-                  doc.setTextColor(0, 112, 243);
-                  doc.text(locShort, x + (cellWidth / 2), y + 11, { align: 'center' });
-
-                  let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
-                  doc.setFontSize(6.5);
-                  doc.setFont("helvetica", "normal");
-                  doc.setTextColor(80, 80, 80);
-                  doc.text(timeStr, x + (cellWidth / 2), y + 17, { align: 'center' });
+            let ev = eventMap[dateKey];
+            if (ev) {
+              if (ev.isOffDay) {
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(150, 150, 150);
+                doc.text("OFF", x + (cellWidth / 2), y + 13, { align: 'center' });
+              } else {
+                // Get display location (short code if present, otherwise full name)
+                let locShort = ev.location;
+                let matchLoc = ev.location.match(/\(([^)]+)\)/);
+                if (matchLoc) {
+                  locShort = matchLoc[1];
                 }
-              }
 
-              currentDay++;
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(0, 112, 243);
+                doc.text(locShort, x + (cellWidth / 2), y + 11, { align: 'center' });
+
+                let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
+                doc.setFontSize(6.5);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(80, 80, 80);
+                doc.text(timeStr, x + (cellWidth / 2), y + 17, { align: 'center' });
+              }
             }
+
+            currentDay++;
           }
-          row++;
         }
+        row++;
       }
 
       doc.save(filename);
