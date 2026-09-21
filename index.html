@@ -2,34 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Kevin's Monthly Schedule Generator</title>
+  <title>Kevin's Monthly Schedule Generator & Revision Tool</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 650px; margin: 40px auto; padding: 0 20px; color: #333; }
-    .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 40px; text-align: center; background: #f7f9fa; cursor: pointer; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #333; }
+    .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 10px; padding: 24px; margin-bottom: 30px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .dropzone { border: 2px dashed #0070f3; border-radius: 8px; padding: 30px 20px; text-align: center; background: #f7f9fa; cursor: pointer; transition: background 0.2s; }
     .dropzone:hover { background: #f0f4f8; }
-    .btn-group { display: flex; gap: 10px; margin-top: 20px; }
+    .dropzone.revision { border-color: #10b981; background: #f0fdf4; }
+    .dropzone.revision:hover { background: #dcfce7; }
+    .btn-group { display: flex; gap: 10px; margin-top: 15px; }
     button { flex: 1; background: #0070f3; color: white; border: none; padding: 12px 15px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
-    #log { margin-top: 20px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 12px; border-radius: 4px; max-height: 250px; overflow-y: auto; }
+    button.revision-btn { background: #10b981; }
+    button.revision-btn:hover { background: #059669; }
+    button:disabled { background: #ccc !important; cursor: not-allowed; }
+    .log-box { margin-top: 15px; white-space: pre-wrap; font-family: monospace; font-size: 13px; background: #eee; padding: 12px; border-radius: 4px; max-height: 200px; overflow-y: auto; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    h2 { margin-top: 0; font-size: 20px; color: #111; }
+    h3 { margin-top: 0; font-size: 15px; color: #444; }
   </style>
 </head>
 <body>
 
-  <h2>Kevin's Monthly Schedule Generator</h2>
-  <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-    <p>📄 Drop schedule PDFs here or click to upload</p>
-    <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
+  <!-- ================= SECTION 1: STABLE MONTHLY GENERATOR ================= -->
+  <div class="card">
+    <h2>Kevin's Monthly Schedule Generator</h2>
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <p>📄 Drop baseline schedule PDFs here or click to upload</p>
+      <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
+    </div>
+
+    <div class="btn-group">
+      <button id="icsBtn" disabled>📅 Generate .ICS Calendar</button>
+      <button id="pdfBtn" disabled>📄 Generate Summary PDF</button>
+    </div>
+
+    <div class="log-box" id="log">Upload PDFs to begin...</div>
   </div>
 
-  <div class="btn-group">
-    <button id="icsBtn" disabled>📅 Generate .ICS Calendar</button>
-    <button id="pdfBtn" disabled>📄 Generate Summary PDF</button>
-  </div>
+  <!-- ================= SECTION 2: SCHEDULE REVISION ENGINE ================= -->
+  <div class="card" style="border-color: #10b981;">
+    <h2>🔄 Schedule Revision & Comparison Tool</h2>
+    <p style="font-size: 13px; color: #666; margin-bottom: 15px;">
+      Upload your original PDF schedule(s) in Box A and the newly updated PDF schedule(s) in Box B to compare and generate revised exports with highlighted changes.
+    </p>
 
-  <div id="log">Upload PDFs to begin...</div>
+    <div class="grid-2">
+      <div>
+        <h3>Box A: Original PDF(s)</h3>
+        <div class="dropzone" id="dropzoneOrig" onclick="document.getElementById('fileInputOrig').click()">
+          <p style="font-size: 13px;">📄 Drop Original PDFs</p>
+          <input type="file" id="fileInputOrig" multiple accept="application/pdf" style="display:none">
+        </div>
+      </div>
+      <div>
+        <h3>Box B: Updated PDF(s)</h3>
+        <div class="dropzone revision" id="dropzoneRev" onclick="document.getElementById('fileInputRev').click()">
+          <p style="font-size: 13px;">📄 Drop Updated PDFs</p>
+          <input type="file" id="fileInputRev" multiple accept="application/pdf" style="display:none">
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button id="icsDiffBtn" class="revision-btn" disabled>📅 Export Updated Shifts (.ICS)</button>
+      <button id="pdfDiffBtn" class="revision-btn" disabled>📄 Export Revised PDF (Highlighted)</button>
+    </div>
+
+    <div class="log-box" id="revLog">Upload both Original and Updated PDFs to enable revision mode...</div>
+  </div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -56,10 +99,15 @@
 
     const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
 
+    // Variables for Section 1
     let filesList = [];
     let detectedMonthCode = "09";
     let detectedMonthStr = "SEPTEMBER";
     let detectedYearStr = "2026";
+
+    // Variables for Section 2
+    let filesListOrig = [];
+    let filesListRev = [];
 
     const fileInput = document.getElementById('fileInput');
     const dropzone = document.getElementById('dropzone');
@@ -131,17 +179,19 @@
       return null;
     }
 
-    async function parseScheduleEvents() {
-      log.textContent = "Processing PDF pages...\n";
+    async function parsePdfFileList(inputFiles) {
       let rawEntriesByDate = {}; 
+      let localMonthCode = "09";
+      let localMonthStr = "SEPTEMBER";
+      let localYearStr = "2026";
 
-      for (let file of filesList) {
+      for (let file of inputFiles) {
         const fileMeta = extractMetadataFromFileName(file.name);
         
-        detectedYearStr = fileMeta.year;
-        detectedMonthCode = fileMeta.month;
+        localYearStr = fileMeta.year;
+        localMonthCode = fileMeta.month;
         if (monthNamesUpper[fileMeta.month]) {
-          detectedMonthStr = monthNamesUpper[fileMeta.month];
+          localMonthStr = monthNamesUpper[fileMeta.month];
         }
 
         const arrayBuffer = await file.arrayBuffer();
@@ -282,7 +332,17 @@
         });
       }
 
-      return finalEvents.sort((a, b) => a.date.localeCompare(b.date));
+      finalEvents.sort((a, b) => a.date.localeCompare(b.date));
+      return { finalEvents, localMonthCode, localMonthStr, localYearStr };
+    }
+
+    async function parseScheduleEvents() {
+      log.textContent = "Processing PDF pages...\n";
+      let res = await parsePdfFileList(filesList);
+      detectedMonthCode = res.localMonthCode;
+      detectedMonthStr = res.localMonthStr;
+      detectedYearStr = res.localYearStr;
+      return res.finalEvents;
     }
 
     icsBtn.addEventListener('click', async () => {
@@ -308,7 +368,7 @@
       generatePDF(uniqueEvents, filename);
     });
 
-    function downloadICS(events, filename) {
+    function downloadICS(events, filename, isDiffMode = false) {
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -322,9 +382,11 @@
         let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
         let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
 
+        let summaryStr = isDiffMode ? `${e.location} -- UPDATED` : `${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`;
+
         icsContent.push(
           'BEGIN:VEVENT',
-          `SUMMARY:${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`,
+          `SUMMARY:${summaryStr}`,
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
           `LOCATION:${e.location}`,
@@ -342,7 +404,7 @@
       link.click();
     }
 
-    function generatePDF(events, filename) {
+    function generatePDF(events, filename, diffMap = {}) {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF('p', 'mm', 'a4');
 
@@ -351,7 +413,7 @@
       doc.text(`Kevin's Work Schedule - ${detectedMonthStr} ${detectedYearStr}`, 14, 20);
 
       const tableData = events.map(e => [
-        e.date,
+        e.date + (diffMap[e.date] ? ' (UPDATED)' : ''),
         e.location,
         e.isOffDay ? 'OFF' : (e.isTimeMissing ? 'TBD' : `${e.start} - ${e.end}`),
         e.raw
@@ -362,7 +424,17 @@
         head: [['Date', 'Location', 'Shift Time', 'Roster Entry Details']],
         body: tableData,
         theme: 'striped',
-        headStyles: { fillColor: [0, 112, 243] }
+        headStyles: { fillColor: [0, 112, 243] },
+        didParseCell: function(data) {
+          if (data.section === 'body') {
+            let rowDate = events[data.row.index].date;
+            if (diffMap[rowDate]) {
+              data.cell.styles.fillColor = [220, 252, 231]; // Soft green background for updated rows
+              data.cell.styles.textColor = [6, 95, 70];    // Dark green text
+              data.cell.styles.fontStyle = 'bold';
+            }
+          }
+        }
       });
 
       // --- PAGE 2: Monthly Visual Calendar View ---
@@ -431,6 +503,8 @@
             let dateKey = `${gridYear}-${monthStr}-${dayStr}`;
 
             let ev = eventMap[dateKey];
+            let isUpdated = !!diffMap[dateKey];
+
             if (ev) {
               if (ev.isOffDay) {
                 doc.setFontSize(10);
@@ -444,13 +518,17 @@
                   locShort = matchLoc[1];
                 }
 
-                // Larger Location Text
+                // Location Text (Green if updated, Blue if standard)
                 doc.setFontSize(13.5);
                 doc.setFont("helvetica", "bold");
-                doc.setTextColor(0, 112, 243);
+                if (isUpdated) {
+                  doc.setTextColor(16, 185, 129); // Green accent for revisions
+                } else {
+                  doc.setTextColor(0, 112, 243);  // Standard Blue
+                }
                 doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
 
-                // Larger Time Text
+                // Time Text
                 let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
                 doc.setFontSize(10);
                 doc.setFont("helvetica", "bold");
@@ -467,6 +545,111 @@
 
       doc.save(filename);
     }
+
+    // =========================================================================
+    // SECTION 2: REVISION ENGINE HANDLERS
+    // =========================================================================
+    const fileInputOrig = document.getElementById('fileInputOrig');
+    const fileInputRev = document.getElementById('fileInputRev');
+    const dropzoneOrig = document.getElementById('dropzoneOrig');
+    const dropzoneRev = document.getElementById('dropzoneRev');
+    const icsDiffBtn = document.getElementById('icsDiffBtn');
+    const pdfDiffBtn = document.getElementById('pdfDiffBtn');
+    const revLog = document.getElementById('revLog');
+
+    fileInputOrig.addEventListener('change', (e) => { filesListOrig = Array.from(e.target.files); checkRevStatus(); });
+    fileInputRev.addEventListener('change', (e) => { filesListRev = Array.from(e.target.files); checkRevStatus(); });
+
+    dropzoneOrig.addEventListener('dragover', (e) => e.preventDefault());
+    dropzoneOrig.addEventListener('drop', (e) => { e.preventDefault(); filesListOrig = Array.from(e.dataTransfer.files); checkRevStatus(); });
+
+    dropzoneRev.addEventListener('dragover', (e) => e.preventDefault());
+    dropzoneRev.addEventListener('drop', (e) => { e.preventDefault(); filesListRev = Array.from(e.dataTransfer.files); checkRevStatus(); });
+
+    function checkRevStatus() {
+      let msg = [];
+      if (filesListOrig.length > 0) msg.push(`Box A: ${filesListOrig.length} file(s)`);
+      if (filesListRev.length > 0) msg.push(`Box B: ${filesListRev.length} file(s)`);
+
+      if (filesListOrig.length > 0 && filesListRev.length > 0) {
+        revLog.textContent = "Ready to analyze changes:\n" + msg.join("\n");
+        icsDiffBtn.disabled = false;
+        pdfDiffBtn.disabled = false;
+      } else {
+        revLog.textContent = msg.join("\n") || "Upload both Original and Updated PDFs to enable revision mode...";
+        icsDiffBtn.disabled = true;
+        pdfDiffBtn.disabled = true;
+      }
+    }
+
+    async function computeScheduleDiff() {
+      revLog.textContent = "Parsing original and updated schedule PDFs...\n";
+      
+      let origRes = await parsePdfFileList(filesListOrig);
+      let revRes = await parsePdfFileList(filesListRev);
+
+      detectedMonthCode = revRes.localMonthCode;
+      detectedMonthStr = revRes.localMonthStr;
+      detectedYearStr = revRes.localYearStr;
+
+      let origEvents = origRes.finalEvents;
+      let revEvents = revRes.finalEvents;
+
+      let origMap = {};
+      origEvents.forEach(e => { origMap[e.date] = e; });
+
+      let mergedEventsMap = {};
+      origEvents.forEach(e => { mergedEventsMap[e.date] = e; });
+
+      let diffMap = {};
+      let updatedShiftsOnly = [];
+
+      revEvents.forEach(revEv => {
+        let origEv = origMap[revEv.date];
+
+        if (!origEv) {
+          // Completely new date entry
+          diffMap[revEv.date] = true;
+          mergedEventsMap[revEv.date] = revEv;
+          if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+        } else {
+          // Check for differences in timing, location, or off status
+          let isDifferent = (origEv.start !== revEv.start) ||
+                            (origEv.end !== revEv.end) ||
+                            (origEv.location !== revEv.location) ||
+                            (origEv.isOffDay !== revEv.isOffDay);
+
+          if (isDifferent) {
+            diffMap[revEv.date] = true;
+            mergedEventsMap[revEv.date] = revEv;
+            if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+          }
+        }
+      });
+
+      let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
+
+      return { fullMergedList, updatedShiftsOnly, diffMap };
+    }
+
+    icsDiffBtn.addEventListener('click', async () => {
+      let { updatedShiftsOnly } = await computeScheduleDiff();
+      if (updatedShiftsOnly.length === 0) {
+        revLog.textContent += "\nNo schedule changes detected between Box A and Box B.";
+        return;
+      }
+      const filename = `Kevin_UPDATED_Shifts_${detectedMonthStr}_${detectedYearStr}.ics`;
+      revLog.textContent += `\nFound ${updatedShiftsOnly.length} updated shift(s)!\nDownloading delta ICS: ${filename}...`;
+      downloadICS(updatedShiftsOnly, filename, true);
+    });
+
+    pdfDiffBtn.addEventListener('click', async () => {
+      let { fullMergedList, diffMap } = await computeScheduleDiff();
+      let totalChanges = Object.keys(diffMap).length;
+      const filename = `Kevin_Revised_Schedule_${detectedMonthStr}_${detectedYearStr}.pdf`;
+      revLog.textContent += `\nReconciled schedule with ${totalChanges} updated day(s) highlighted in GREEN.\nDownloading revised PDF: ${filename}...`;
+      generatePDF(fullMergedList, filename, diffMap);
+    });
   </script>
 </body>
 </html>
