@@ -334,7 +334,6 @@
       return { finalEvents, localMonthCode, localMonthStr, localYearStr };
     }
 
-    // Function to parse a previously generated Summary PDF (Box A)
     async function parseGeneratedPdf(file) {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -370,6 +369,21 @@
             }
           }
 
+          let rawDetail = "";
+          let parts = rowStr.split(dateKey);
+          if (parts.length > 1) {
+            let afterDate = parts[1].trim();
+            let cleanText = afterDate
+              .replace(location, '')
+              .replace(/OFF/g, '')
+              .replace(/\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}/g, '')
+              .replace(/\(UPDATED\)/g, '')
+              .trim();
+            rawDetail = cleanText || rowStr;
+          } else {
+            rawDetail = rowStr;
+          }
+
           eventsMap[dateKey] = {
             date: dateKey,
             dayNum: parseInt(dateKey.split('-')[2], 10),
@@ -378,7 +392,7 @@
             end: parsedTime ? parsedTime.end : null,
             isTimeMissing: !parsedTime && !isOff,
             location: location,
-            raw: `Original Summary: ${rowStr}`
+            raw: rawDetail
           };
         }
       });
@@ -500,15 +514,14 @@
       const cellHeight = 22;
       const headers = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-      // Draw Day Name Headers
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "bold");
       headers.forEach((h, i) => {
         const x = startX + (i * cellWidth);
         doc.setFillColor(240, 244, 248);
         doc.rect(x, startY - 7, cellWidth, 7, 'F');
         doc.setDrawColor(200, 200, 200);
         doc.rect(x, startY - 7, cellWidth, 7, 'S');
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
         doc.text(h, x + (cellWidth / 2), startY - 2, { align: 'center' });
       });
 
@@ -540,7 +553,6 @@
             doc.setDrawColor(200, 200, 200);
             doc.rect(x, y, cellWidth, cellHeight, 'S');
 
-            // Date number label
             doc.setFontSize(8.5);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(100, 100, 100);
@@ -566,7 +578,6 @@
                   locShort = matchLoc[1];
                 }
 
-                // Location Text (Green if updated, Blue if standard)
                 doc.setFontSize(13.5);
                 doc.setFont("helvetica", "bold");
                 if (isUpdated) {
@@ -576,7 +587,6 @@
                 }
                 doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
 
-                // Time Text
                 let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
                 doc.setFontSize(10);
                 doc.setFont("helvetica", "bold");
@@ -631,58 +641,54 @@
     }
 
     async function computeScheduleDiff() {
-        revLog.textContent = "Parsing original generated summary and updated roster PDFs...\n";
-        
-        // 1. Get baseline events map from Box A
-        let origMap = await parseGeneratedPdf(generatedFile);
-        
-        // 2. Get updated roster events from Box B
-        let revRes = await parsePdfFileList(filesListRev);
+      revLog.textContent = "Parsing original generated summary and updated roster PDFs...\n";
       
-        detectedMonthCode = revRes.localMonthCode;
-        detectedMonthStr = revRes.localMonthStr;
-        detectedYearStr = revRes.localYearStr;
-      
-        let revEvents = revRes.finalEvents;
-      
-        let diffMap = {};
-        let updatedShiftsOnly = [];
-      
-        revEvents.forEach(revEv => {
-          let origEv = origMap[revEv.date];
-      
-          if (!origEv) {
-            // New date entry not present in original summary
-            diffMap[revEv.date] = true;
-            if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
-          } else {
-            let isLocationSame = origEv.location === revEv.location;
-            
-            // Retain original time if location is identical and new roster lacks time details
-            if (isLocationSame && revEv.isTimeMissing && !origEv.isTimeMissing) {
-              revEv.start = origEv.start;
-              revEv.end = origEv.end;
-              revEv.isTimeMissing = false;
-            }
-      
-            // Check if there is an actual functional change in shift details
-            let isDifferent = (origEv.start !== revEv.start) ||
-                              (origEv.end !== revEv.end) ||
-                              (origEv.location !== revEv.location) ||
-                              (origEv.isOffDay !== revEv.isOffDay);
-      
-            if (isDifferent) {
-              diffMap[revEv.date] = true;
-              if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
-            }
+      let origMap = await parseGeneratedPdf(generatedFile);
+      let revRes = await parsePdfFileList(filesListRev);
+
+      detectedMonthCode = revRes.localMonthCode;
+      detectedMonthStr = revRes.localMonthStr;
+      detectedYearStr = revRes.localYearStr;
+
+      let revEvents = revRes.finalEvents;
+
+      let mergedEventsMap = { ...origMap };
+      let diffMap = {};
+      let updatedShiftsOnly = [];
+
+      revEvents.forEach(revEv => {
+        let origEv = origMap[revEv.date];
+
+        if (!origEv) {
+          diffMap[revEv.date] = true;
+          mergedEventsMap[revEv.date] = revEv;
+          if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+        } else {
+          let isLocationSame = origEv.location === revEv.location;
+          
+          if (isLocationSame && revEv.isTimeMissing && !origEv.isTimeMissing) {
+            revEv.start = origEv.start;
+            revEv.end = origEv.end;
+            revEv.isTimeMissing = false;
           }
-        });
-      
-        // Sort updated shifts chronologically
-        updatedShiftsOnly.sort((a, b) => a.date.localeCompare(b.date));
-      
-        return { fullMergedList: updatedShiftsOnly, updatedShiftsOnly, diffMap };
-      }
+
+          let isDifferent = (origEv.start !== revEv.start) ||
+                            (origEv.end !== revEv.end) ||
+                            (origEv.location !== revEv.location) ||
+                            (origEv.isOffDay !== revEv.isOffDay);
+
+          if (isDifferent) {
+            diffMap[revEv.date] = true;
+            mergedEventsMap[revEv.date] = revEv;
+            if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
+          }
+        }
+      });
+
+      let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
+
+      return { fullMergedList, updatedShiftsOnly, diffMap };
+    }
 
     icsDiffBtn.addEventListener('click', async () => {
       let { updatedShiftsOnly } = await computeScheduleDiff();
