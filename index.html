@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Roster Monthly Schedule Generator & Conflict Resolver</title>
+  <title>Monthly Schedule Generator & Revision Tool</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
@@ -30,11 +30,17 @@
     h1 {
       font-size: 1.5rem;
       font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    p.subtitle {
+      color: #64748b;
+      font-size: 0.9rem;
+      margin-top: 0;
       margin-bottom: 1.5rem;
     }
-    .upload-grid {
+    .upload-container {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: 1fr 1fr;
       gap: 1rem;
       margin-bottom: 1.5rem;
     }
@@ -45,18 +51,42 @@
       text-align: center;
       background: var(--card-bg);
       cursor: pointer;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, background-color 0.2s;
     }
     .drop-zone:hover {
       border-color: var(--primary);
+      background-color: #f1f5f9;
     }
     .drop-zone input {
       display: none;
     }
     .file-list {
-      margin-top: 0.5rem;
-      font-size: 0.875rem;
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
       text-align: left;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      background: #f1f5f9;
+      border-radius: 4px;
+      margin-bottom: 0.25rem;
+    }
+    .file-item-remove {
+      color: #ef4444;
+      cursor: pointer;
+      font-weight: bold;
+      padding: 0 0.5rem;
+    }
+    .controls {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
     }
     .btn {
       background-color: var(--primary);
@@ -79,6 +109,26 @@
       opacity: 0.5;
       cursor: not-allowed;
     }
+    .btn-green { background-color: #059669; }
+    .btn-green:hover { background-color: #047857; }
+    .btn-purple { background-color: #7c3aed; }
+    .btn-purple:hover { background-color: #6d28d9; }
+    
+    .status-summary {
+      display: flex;
+      gap: 1.5rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      background: #fff;
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+    .badge-ok { color: #16a34a; }
+    .badge-warn { color: #d97706; }
+    .badge-err { color: #dc2626; }
+
     .log-box {
       background: #1e293b;
       color: #f1f5f9;
@@ -88,53 +138,45 @@
       font-size: 0.85rem;
       max-height: 200px;
       overflow-y: auto;
-      margin-top: 1rem;
     }
-    .status-summary {
-      display: flex;
-      gap: 1rem;
-      margin-top: 1rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-    }
-    .badge-ok { color: #16a34a; }
-    .badge-warn { color: #d97706; }
-    .badge-err { color: #dc2626; }
-    
+
     @media (max-width: 768px) {
       body { padding: 0.75rem; }
-      .upload-grid { grid-template-columns: 1fr; }
+      .upload-container { grid-template-columns: 1fr; }
+      .controls { flex-direction: column; }
+      .btn { width: 100%; }
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Monthly Roster Generator & Conflict Resolver</h1>
-    
-    <div class="upload-grid">
+    <h1>Monthly Schedule Generator & Revision Tool</h1>
+    <p class="subtitle">Parse multi-store shift PDFs, detect cross-store schedules, resolve 2/3 majority consensus, and export to PDF/ICS.</p>
+
+    <div class="upload-container">
       <div class="drop-zone" onclick="document.getElementById('filesA').click()">
-        <strong>Box A (Primary / Original Rosters)</strong>
+        <strong>Box A: Base Rosters (Required)</strong>
         <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">Select PDFs from PP, CY, KT, SK, OIE</p>
         <input type="file" id="filesA" multiple accept="application/pdf" onchange="handleFiles(this.files, 'A')">
         <div id="listA" class="file-list"></div>
       </div>
 
       <div class="drop-zone" onclick="document.getElementById('filesB').click()">
-        <strong>Box B (Revised Rosters - Optional)</strong>
+        <strong>Box B: Revision Rosters (Optional)</strong>
         <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">Upload revised versions to highlight diffs</p>
         <input type="file" id="filesB" multiple accept="application/pdf" onchange="handleFiles(this.files, 'B')">
         <div id="listB" class="file-list"></div>
       </div>
     </div>
 
-    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+    <div class="controls">
       <button class="btn" id="processBtn" onclick="processRosters()">Process Roster Schedules</button>
-      <button class="btn" id="pdfBtn" style="background:#059669; display:none;" onclick="downloadPDF()">Export PDF Report</button>
-      <button class="btn" id="icsBtn" style="background:#7c3aed; display:none;" onclick="exportICS()">Generate .ICS Calendar</button>
+      <button class="btn btn-green" id="pdfBtn" style="display:none;" onclick="downloadPDF()">Export PDF Report</button>
+      <button class="btn btn-purple" id="icsBtn" style="display:none;" onclick="exportICS()">Generate .ICS Calendar</button>
     </div>
 
-    <div id="statusSummary" class="status-summary"></div>
-    <div id="log" class="log-box">System Ready. Please select PDF rosters...</div>
+    <div id="statusSummary" class="status-summary" style="display:none;"></div>
+    <div id="log" class="log-box">System Ready. Select PDF rosters above...</div>
   </div>
 
   <script>
@@ -157,10 +199,22 @@
       renderFileList(box);
     }
 
+    function removeFile(index, box, event) {
+      event.stopPropagation();
+      if (box === 'A') state.filesA.splice(index, 1);
+      else state.filesB.splice(index, 1);
+      renderFileList(box);
+    }
+
     function renderFileList(box) {
       const listDiv = document.getElementById(box === 'A' ? 'listA' : 'listB');
       const arr = box === 'A' ? state.filesA : state.filesB;
-      listDiv.innerHTML = arr.map((f, i) => `<div>📄 ${f.name}</div>`).join('');
+      listDiv.innerHTML = arr.map((f, i) => `
+        <div class="file-item">
+          <span>📄 ${f.name}</span>
+          <span class="file-item-remove" onclick="removeFile(${i}, '${box}', event)">×</span>
+        </div>
+      `).join('');
     }
 
     function log(msg) {
@@ -214,7 +268,7 @@
         const storeRostersA = {};
         for (let file of state.filesA) {
           const store = inferStoreFromFilename(file.name);
-          log(`Parsing Box A Roster: ${file.name} (Inferred Store: ${store})`);
+          log(`Parsing Box A Roster: ${file.name} (Store: ${store})`);
           const items = await parsePdf(file);
           storeRostersA[store] = extractShiftsForMember(items, store, state.memberName);
         }
@@ -230,7 +284,6 @@
           }
         }
 
-        // Reconcile multi-store inputs using 2/3 Supermajority rule
         state.resolvedEvents = reconcileMultiStoreSchedules(storeRostersA, storeRostersB);
         
         displaySummaryStats();
@@ -246,16 +299,11 @@
     }
 
     function extractShiftsForMember(items, defaultStore, memberName) {
-      // Find Member Row
       const memberItem = items.find(i => i.text.toUpperCase().includes(memberName));
       if (!memberItem) return {};
 
-      // Find Date Columns
-      const dateItems = items.filter(i => /^\d{1,2}\/\d{1,2}$\vert{}^\d{1,2}$/.test(i.text) && i.y < memberItem.y + 100 && i.y > memberItem.y - 100);
-      
+      const dateItems = items.filter(i => /^\d{1,2}\/\d{1,2}$\vert{}^\d{1,2}$/.test(i.text) && Math.abs(i.y - memberItem.y) < 100);
       const shiftsByDate = {};
-      
-      // Strict Spatial Filtering (Y-axis within 8px, X-axis within 18px)
       const memberRowItems = items.filter(i => Math.abs(i.y - memberItem.y) <= 8);
 
       dateItems.forEach(col => {
@@ -267,19 +315,14 @@
           return;
         }
 
-        // Extract shift location & time
         let loc = defaultStore;
         let time = '';
 
         const timeMatch = cellText.match(/(\d{2}:?\d{2})\s*[-~]\s*(\d{2}:?\d{2})/);
-        if (timeMatch) {
-          time = `${timeMatch[1]}-${timeMatch[2]}`;
-        }
+        if (timeMatch) time = `${timeMatch[1]}-${timeMatch[2]}`;
 
         const storeMatch = cellText.match(/\b(PP|CY|KT|SK|OIE)\b/i);
-        if (storeMatch) {
-          loc = storeMatch[1].toUpperCase();
-        }
+        if (storeMatch) loc = storeMatch[1].toUpperCase();
 
         shiftsByDate[col.text] = { location: loc, time: time, isOff: false, raw: cellText };
       });
@@ -288,7 +331,6 @@
     }
 
     function reconcileMultiStoreSchedules(rostersA, rostersB) {
-      // Collect all unique dates across all parsed rosters
       const allDates = new Set();
       Object.values(rostersA).forEach(r => Object.keys(r).forEach(d => allDates.add(d)));
 
@@ -304,7 +346,6 @@
 
         let dayResult = resolveConsensus(date, votes);
 
-        // If Box B (Revision) exists, compare and mark diff
         if (rostersB) {
           const votesB = [];
           Object.entries(rostersB).forEach(([store, schedule]) => {
@@ -321,6 +362,7 @@
             dayResult.location = resultB.location;
             dayResult.time = resultB.time;
             dayResult.status = resultB.status;
+            dayResult.flagColor = '#DCFCE7'; // Light Green for Diff
           }
         }
 
@@ -335,7 +377,6 @@
         return { date, location: 'OFF', time: '', status: 'OK', flagColor: null };
       }
 
-      // Count location frequency
       const locCounts = {};
       let totalVotes = votes.length;
 
@@ -343,7 +384,6 @@
         locCounts[v.loc] = (locCounts[v.loc] || 0) + 1;
       });
 
-      // Find top vote getter
       let maxVotes = 0;
       let topLoc = '';
       Object.entries(locCounts).forEach(([loc, count]) => {
@@ -353,21 +393,16 @@
         }
       });
 
-      // Calculate Ratio
       const consensusRatio = maxVotes / totalVotes;
 
-      // Extract time from votes matching the top location
       const matchingTimeVote = votes.find(v => v.loc === topLoc && v.time);
       const timeStr = matchingTimeVote ? matchingTimeVote.time : '09:30-18:30';
 
-      // RULE APPLICATION:
-      // 1. 100% Consensus -> OK (Blue / Plain)
       if (consensusRatio === 1.0) {
         return { date, location: topLoc, time: timeStr, status: 'OK', flagColor: null };
       }
 
-      // 2. Supermajority >= 2/3 (66.7%) -> Rule B: Majority Wins, Yellow Flag
-      // E.g., 4 out of 5 stores (80%), or 3 out of 4 stores (75%)
+      // Supermajority rule: >= 66.7% (2/3) triggers Majority Win (Yellow Flag)
       if (consensusRatio >= 0.667) {
         return { 
           date, 
@@ -379,7 +414,7 @@
         };
       }
 
-      // 3. Ratio < 2/3 (e.g. 3 vs 2 split = 60%, 2 vs 2 split = 50%) -> Rule C: Hard Conflict, Red Flag
+      // Ratio < 2/3 (3 vs 2 split = 60%) triggers Hard Conflict (Red Flag)
       return { 
         date, 
         location: 'CONFLICT', 
@@ -396,6 +431,7 @@
       const errCount = state.resolvedEvents.filter(e => e.status === 'ERR_CONFLICT').length;
 
       const summaryDiv = document.getElementById('statusSummary');
+      summaryDiv.style.display = 'flex';
       summaryDiv.innerHTML = `
         <span class="badge-ok">✔ Clean: ${okCount} Days</span>
         <span class="badge-warn">⚠️ Discrepancies (Yellow): ${warnCount} Days</span>
@@ -464,7 +500,7 @@
         didParseCell: function(data) {
           if (data.section === 'body') {
             const rowEv = state.resolvedEvents[data.row.index];
-            if (rowEv.flagColor) {
+            if (rowEv && rowEv.flagColor) {
               data.cell.styles.fillColor = rowEv.flagColor;
             }
           }
