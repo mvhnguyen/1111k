@@ -3,672 +3,430 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Monthly Schedule Generator & Revision Tool</title>
+  <title>Roster Monthly Schedule Generator & Conflict Resolver</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
   <style>
     :root {
-      --primary: #0070f3;
-      --primary-hover: #005bb5;
-      --accent: #10b981;
-      --accent-hover: #059669;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
       --bg: #f8fafc;
       --card-bg: #ffffff;
+      --text: #0f172a;
       --border: #e2e8f0;
-      --text: #1e293b;
-      --text-muted: #64748b;
     }
-
-    * { box-sizing: border-box; }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      max-width: 760px;
-      margin: 0 auto;
-      padding: 20px 16px;
-      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background-color: var(--bg);
-      line-height: 1.5;
+      color: var(--text);
+      margin: 0;
+      padding: 1.5rem;
     }
-
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 24px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
     }
-
-    .dropzone {
-      border: 2px dashed var(--primary);
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1.5rem;
+    }
+    .upload-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .drop-zone {
+      border: 2px dashed var(--border);
       border-radius: 8px;
-      padding: 24px 16px;
+      padding: 1.5rem;
       text-align: center;
-      background: #f0f7ff;
+      background: var(--card-bg);
       cursor: pointer;
-      transition: all 0.2s ease;
-      touch-action: manipulation;
+      transition: border-color 0.2s;
     }
-
-    .dropzone:hover, .dropzone:active {
-      background: #e0f0ff;
+    .drop-zone:hover {
+      border-color: var(--primary);
     }
-
-    .dropzone.revision {
-      border-color: var(--accent);
-      background: #f0fdf4;
+    .drop-zone input {
+      display: none;
     }
-
-    .dropzone.revision:hover, .dropzone.revision:active {
-      background: #dcfce7;
+    .file-list {
+      margin-top: 0.5rem;
+      font-size: 0.875rem;
+      text-align: left;
     }
-
-    .btn-group {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 16px;
-    }
-
-    @media (min-width: 520px) {
-      .btn-group {
-        flex-direction: row;
-      }
-    }
-
-    button {
-      flex: 1;
-      background: var(--primary);
+    .btn {
+      background-color: var(--primary);
       color: white;
       border: none;
-      padding: 12px 16px;
-      border-radius: 8px;
-      font-size: 14px;
-      cursor: pointer;
+      padding: 0.75rem 1.25rem;
+      border-radius: 6px;
       font-weight: 600;
-      min-height: 48px;
+      cursor: pointer;
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      transition: background 0.2s;
+      gap: 0.5rem;
     }
-
-    button:hover { background: var(--primary-hover); }
-
-    button.revision-btn { background: var(--accent); }
-    button.revision-btn:hover { background: var(--accent-hover); }
-
-    button:disabled {
-      background: #cbd5e1 !important;
+    .btn:hover {
+      background-color: var(--primary-hover);
+    }
+    .btn:disabled {
+      opacity: 0.5;
       cursor: not-allowed;
-      opacity: 0.7;
     }
-
     .log-box {
-      margin-top: 16px;
-      white-space: pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      font-size: 12.5px;
-      background: #0f172a;
+      background: #1e293b;
       color: #f1f5f9;
-      padding: 14px;
-      border-radius: 8px;
-      max-height: 220px;
+      padding: 1rem;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      max-height: 200px;
       overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      margin-top: 1rem;
     }
-
-    .grid-2 {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 16px;
-    }
-
-    @media (min-width: 580px) {
-      .grid-2 {
-        grid-template-columns: 1fr 1fr;
-      }
-    }
-
-    .input-group {
-      margin-bottom: 0;
-    }
-
-    .input-group label {
-      display: block;
-      font-weight: 600;
-      margin-bottom: 8px;
-      font-size: 14px;
-    }
-
-    .input-group input {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 15px;
-      box-sizing: border-box;
-    }
-
-    h2 {
-      margin-top: 0;
-      font-size: 18px;
-      color: var(--text);
+    .status-summary {
       display: flex;
-      align-items: center;
-      gap: 8px;
+      gap: 1rem;
+      margin-top: 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
     }
-
-    h3 {
-      margin-top: 0;
-      font-size: 14px;
-      color: var(--text-muted);
+    .badge-ok { color: #16a34a; }
+    .badge-warn { color: #d97706; }
+    .badge-err { color: #dc2626; }
+    
+    @media (max-width: 768px) {
+      body { padding: 0.75rem; }
+      .upload-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-
-  <!-- ================= PERSON SELECTOR CONFIG ================= -->
-  <div class="card" style="border-color: var(--primary); background: #f4f8ff;">
-    <h2>👤 Target Person Configuration</h2>
-    <div class="input-group">
-      <label for="personNameInput">Enter target name to scan from roster (e.g., Kevin, Alex, Sarah):</label>
-      <input type="text" id="personNameInput" value="Kevin" placeholder="Enter name...">
-    </div>
-  </div>
-
-  <!-- ================= SECTION 1: STABLE MONTHLY GENERATOR ================= -->
-  <div class="card">
-    <h2>📄 Monthly Schedule Generator</h2>
-    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
-      <p style="margin: 0; font-weight: 500;">📄 Drop baseline schedule PDFs here or tap to upload</p>
-      <input type="file" id="fileInput" multiple accept="application/pdf" style="display:none">
-    </div>
-
-    <div class="btn-group">
-      <button id="icsBtn" disabled>📅 Generate .ICS Calendar</button>
-      <button id="pdfBtn" disabled>📄 Generate Summary PDF</button>
-    </div>
-
-    <div class="log-box" id="log">Upload PDFs to begin...</div>
-  </div>
-
-  <!-- ================= SECTION 2: SCHEDULE REVISION ENGINE ================= -->
-  <div class="card" style="border-color: var(--accent);">
-    <h2>🔄 Schedule Revision & Comparison Tool</h2>
-    <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-      Drop your previously generated summary PDF into Box A, and the newly updated roster PDF into Box B to calculate changes.
-    </p>
-
-    <div class="grid-2">
-      <div>
-        <h3>Box A: Generated Summary PDF</h3>
-        <div class="dropzone" id="dropzoneGenerated" onclick="document.getElementById('fileInputGenerated').click()">
-          <p style="font-size: 13px; margin: 0;">📄 Drop Generated PDF</p>
-          <input type="file" id="fileInputGenerated" accept="application/pdf" style="display:none">
-        </div>
+  <div class="container">
+    <h1>Monthly Roster Generator & Conflict Resolver</h1>
+    
+    <div class="upload-grid">
+      <div class="drop-zone" onclick="document.getElementById('filesA').click()">
+        <strong>Box A (Primary / Original Rosters)</strong>
+        <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">Select PDFs from PP, CY, KT, SK, OIE</p>
+        <input type="file" id="filesA" multiple accept="application/pdf" onchange="handleFiles(this.files, 'A')">
+        <div id="listA" class="file-list"></div>
       </div>
-      <div>
-        <h3>Box B: Updated Roster PDF(s)</h3>
-        <div class="dropzone revision" id="dropzoneRev" onclick="document.getElementById('fileInputRev').click()">
-          <p style="font-size: 13px; margin: 0;">📄 Drop Updated Roster</p>
-          <input type="file" id="fileInputRev" multiple accept="application/pdf" style="display:none">
-        </div>
+
+      <div class="drop-zone" onclick="document.getElementById('filesB').click()">
+        <strong>Box B (Revised Rosters - Optional)</strong>
+        <p style="font-size: 0.8rem; color: #64748b; margin-top: 0.25rem;">Upload revised versions to highlight diffs</p>
+        <input type="file" id="filesB" multiple accept="application/pdf" onchange="handleFiles(this.files, 'B')">
+        <div id="listB" class="file-list"></div>
       </div>
     </div>
 
-    <div class="btn-group">
-      <button id="icsDiffBtn" class="revision-btn" disabled>📅 Export Updated Shifts (.ICS)</button>
-      <button id="pdfDiffBtn" class="revision-btn" disabled>📄 Export Revised PDF (Highlighted)</button>
+    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+      <button class="btn" id="processBtn" onclick="processRosters()">Process Roster Schedules</button>
+      <button class="btn" id="pdfBtn" style="background:#059669; display:none;" onclick="downloadPDF()">Export PDF Report</button>
+      <button class="btn" id="icsBtn" style="background:#7c3aed; display:none;" onclick="exportICS()">Generate .ICS Calendar</button>
     </div>
 
-    <div class="log-box" id="revLog">Upload both files to enable revision mode...</div>
+    <div id="statusSummary" class="status-summary"></div>
+    <div id="log" class="log-box">System Ready. Please select PDF rosters...</div>
   </div>
 
   <script>
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-    const locationMap = {
-      'CY': 'Central Yard (CY)',
-      'KT': 'Kennedy Town (KT)',
-      'SK': 'Sai Kung (SK)',
-      'OIE': 'Quarry Bay (OIE)',
-      'PP': 'Pacific Place (PP)'
+    let state = {
+      filesA: [],
+      filesB: [],
+      resolvedEvents: [],
+      memberName: 'KEVIN'
     };
 
-    const monthMap = {
-      'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
-      'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
-      'SEP': '09', 'SEPT': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-    };
-
-    const monthNamesUpper = {
-      '01': 'JANUARY', '02': 'FEBRUARY', '03': 'MARCH', '04': 'APRIL',
-      '05': 'MAY', '06': 'JUNE', '07': 'JULY', '08': 'AUGUST',
-      '09': 'SEPTEMBER', '10': 'OCTOBER', '11': 'NOVEMBER', '12': 'DECEMBER'
-    };
-
-    const dayNames = ["Mon", "Tue", "Wed", "Thur", "Fri", "Sat", "Sun"];
-
-    let filesList = [];
-    let detectedMonthCode = "09";
-    let detectedMonthStr = "SEPTEMBER";
-    let detectedYearStr = "2026";
-
-    let generatedFile = null;
-    let filesListRev = [];
-
-    const fileInput = document.getElementById('fileInput');
-    const dropzone = document.getElementById('dropzone');
-    const icsBtn = document.getElementById('icsBtn');
-    const pdfBtn = document.getElementById('pdfBtn');
-    const log = document.getElementById('log');
-    const personNameInput = document.getElementById('personNameInput');
-
-    function getTargetPersonName() {
-      let val = personNameInput.value.trim();
-      return val.length > 0 ? val : "Kevin";
-    }
-
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
-    dropzone.addEventListener('dragover', (e) => e.preventDefault());
-    dropzone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      handleFiles(e.dataTransfer.files);
-    });
-
-    function handleFiles(files) {
-      filesList = Array.from(files).filter(f => f.type === 'application/pdf');
-      if (filesList.length > 0) {
-        log.textContent = `Selected ${filesList.length} PDF file(s):\n` + filesList.map(f => `- ${f.name}`).join('\n');
-        icsBtn.disabled = false;
-        pdfBtn.disabled = false;
-      }
-    }
-
-    function extractMetadataFromFileName(filename) {
-      let fileStoreCode = 'PP';
-      let fileStoreName = 'Pacific Place (PP)';
-      let year = '2026';
-      let month = '09';
-
-      for (let code in locationMap) {
-        let regex = new RegExp(`[\\b_]${code}[\\b_.]`, 'i');
-        if (regex.test(filename)) {
-          fileStoreCode = code;
-          fileStoreName = locationMap[code];
-          break;
+    function handleFiles(files, box) {
+      const arr = box === 'A' ? state.filesA : state.filesB;
+      for (let file of files) {
+        if (!arr.some(f => f.name === file.name)) {
+          arr.push(file);
         }
       }
-
-      let yearMatch = filename.match(/\b(202\d)\b/);
-      if (yearMatch) year = yearMatch[1];
-
-      for (let m in monthMap) {
-        if (filename.toUpperCase().includes(m)) {
-          month = monthMap[m];
-          break;
-        }
-      }
-
-      return { fileStoreCode, fileStoreName, year, month };
+      renderFileList(box);
     }
 
-    function formatTimeString(rawTime) {
-      let clean = rawTime.replace(/[^\d]/g, '');
-      if (clean.length === 3) clean = '0' + clean;
-      if (clean.length === 4) {
-        return `${clean.slice(0, 2)}:${clean.slice(2)}`;
-      }
-      return rawTime;
+    function renderFileList(box) {
+      const listDiv = document.getElementById(box === 'A' ? 'listA' : 'listB');
+      const arr = box === 'A' ? state.filesA : state.filesB;
+      listDiv.innerHTML = arr.map((f, i) => `<div>📄 ${f.name}</div>`).join('');
     }
 
-    function calculateDefaultEndTime(startTimeStr) {
-      let [hours, minutes] = startTimeStr.split(':').map(Number);
-      let endHours = (hours + 9) % 24;
-      let formattedEndHours = String(endHours).padStart(2, '0');
-      let formattedMinutes = String(minutes).padStart(2, '0');
-      return `${formattedEndHours}:${formattedMinutes}`;
+    function log(msg) {
+      const l = document.getElementById('log');
+      l.innerHTML += `<div>> ${msg}</div>`;
+      l.scrollTop = l.scrollHeight;
     }
 
-    function parseShiftTime(text) {
-      // 1. Standard range format: "08:30-17:30" or "0830-1730" or "0715-1615"
-      let rangeMatch = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
-      if (rangeMatch) {
-        return {
-          start: formatTimeString(rangeMatch[1]),
-          end: formatTimeString(rangeMatch[2])
-        };
-      }
-
-      // 2. Embedded store code + 4-digit time: "PP0830", "CY 0900", "SK0830"
-      let embeddedMatch = text.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
-      if (embeddedMatch) {
-        let startStr = formatTimeString(embeddedMatch[1]);
-        return {
-          start: startStr,
-          end: calculateDefaultEndTime(startStr)
-        };
-      }
-
-      // 3. Standalone 4-digit or formatted time: "0830" or "08:30"
-      let singleTimeMatch = text.match(/\b(\d{1,2}:?\d{2})\b/);
-      if (singleTimeMatch) {
-        let startStr = formatTimeString(singleTimeMatch[1]);
-        return {
-          start: startStr,
-          end: calculateDefaultEndTime(startStr)
-        };
-      }
-
-      return null;
-    }
-
-    async function parsePdfFileList(inputFiles) {
-      let rawEntriesByDate = {}; 
-      let localMonthCode = "09";
-      let localMonthStr = "SEPTEMBER";
-      let localYearStr = "2026";
-      let targetName = getTargetPersonName();
-
-      for (let file of inputFiles) {
-        const fileMeta = extractMetadataFromFileName(file.name);
-        
-        localYearStr = fileMeta.year;
-        localMonthCode = fileMeta.month;
-        if (monthNamesUpper[fileMeta.month]) {
-          localMonthStr = monthNamesUpper[fileMeta.month];
-        }
-
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        
-        for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-          const page = await pdf.getPage(pageNum);
-          const textContent = await page.getTextContent();
-          
-          let items = textContent.items.map(item => ({
-            x: Math.round(item.transform[4]),
-            y: Math.round(item.transform[5]),
-            str: item.str.trim()
-          })).filter(i => i.str.length > 0);
-
-          let headers = [];
-          dayNames.forEach(d => {
-            let found = items.find(i => i.str === d);
-            if (found) headers.push({ name: d, x: found.x, y: found.y });
-          });
-
-          if (headers.length < 1) continue;
-
-          headers.sort((a, b) => a.x - b.x);
-
-          let minX = headers[0].x - 15;
-          let maxX = headers[headers.length - 1].x + 35;
-          let headerY = headers[0].y;
-
-          let columns = [];
-          headers.forEach(h => {
-            let dateItem = items.find(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.x - h.x) < 25 && Math.abs(i.y - headerY) < 30);
-            if (dateItem) {
-              columns.push({
-                dayName: h.name,
-                dayNum: parseInt(dateItem.str, 10),
-                x: h.x
-              });
-            }
-          });
-
-          if (columns.length === 0) continue;
-
-          let personItem = items.find(i => i.str.toLowerCase() === targetName.toLowerCase());
-          if (!personItem) continue;
-
-          // Tight Y-threshold (8px) to prevent vertical BLEED from adjacent staff rows
-          let personRowItems = items.filter(i => 
-            Math.abs(i.y - personItem.y) <= 8 && 
-            i.str.toLowerCase() !== targetName.toLowerCase() && 
-            i.str !== "FT" &&
-            i.x >= minX && 
-            i.x <= maxX
-          );
-
-          columns.forEach(col => {
-            // Tight X-threshold (18px) to prevent HORIZONTAL bleed between daily columns
-            let matched = personRowItems.filter(i => Math.abs(i.x - col.x) <= 18);
-            if (matched.length === 0) return;
-
-            let cellText = matched.map(m => m.str).join(" ").trim();
-
-            let targetYear = parseInt(fileMeta.year, 10);
-            let targetMonth = parseInt(fileMeta.month, 10);
-
-            if (col.dayNum > 25 && columns.indexOf(col) < 3 && pageNum === 1) {
-              targetMonth -= 1;
-              if (targetMonth === 0) {
-                targetMonth = 12;
-                targetYear -= 1;
-              }
-            }
-
-            let monthFormatted = String(targetMonth).padStart(2, '0');
-            let dayFormatted = String(col.dayNum).padStart(2, '0');
-            let dateKey = `${targetYear}-${monthFormatted}-${dayFormatted}`;
-
-            if (!rawEntriesByDate[dateKey]) {
-              rawEntriesByDate[dateKey] = [];
-            }
-
-            rawEntriesByDate[dateKey].push({
-              sourceStoreCode: fileMeta.fileStoreCode,
-              sourceStoreName: fileMeta.fileStoreName,
-              dayNum: col.dayNum,
-              cellText: cellText
-            });
-          });
-        }
-      }
-
-      let finalEvents = [];
-
-      for (let dateKey in rawEntriesByDate) {
-        let entries = rawEntriesByDate[dateKey];
-        let primaryShiftTime = null;
-        let actualLocationName = null;
-        let isOffDay = false;
-        let combinedRaw = [];
-
-        // Pre-pass: Check if any entry explicitly contains a valid active shift time or embedded store code
-        let activeShiftEntry = entries.find(e => {
-          let hasRange = /(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/.test(e.cellText);
-          let hasEmbedded = /(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i.test(e.cellText);
-          return hasRange || hasEmbedded;
-        });
-
-        entries.forEach(entry => {
-          combinedRaw.push(`${entry.sourceStoreCode}: ${entry.cellText}`);
-          
-          let tokens = entry.cellText.toLowerCase().split(/\s+/);
-          let hasOffToken = tokens.some(t => ['x', 'x (w2)', 'al', 'sl', 'cl', 'rdu', 'off'].includes(t)) || 
-                             entry.cellText.toLowerCase().startsWith("x ");
-
-          // Parse potential shift time explicitly from this cell's text
-          let parsedTime = parseShiftTime(entry.cellText);
-
-          if (hasOffToken && !parsedTime) {
-            isOffDay = true;
-          }
-
-          // Detect location from embedded location codes
-          for (let code in locationMap) {
-            let codeRegex = new RegExp(`\\b${code}`, 'i');
-            if (codeRegex.test(entry.cellText)) {
-              actualLocationName = locationMap[code];
-              break;
-            }
-          }
-
-          if (parsedTime && !primaryShiftTime) {
-            primaryShiftTime = parsedTime;
-            if (!actualLocationName) {
-              actualLocationName = entry.sourceStoreName;
-            }
-          }
-        });
-
-        // RECONCILIATION RULE: If an active shift with valid times exists in one store, override pure 'x' off indicators
-        if (activeShiftEntry && primaryShiftTime) {
-          isOffDay = false;
-        }
-
-        // Fall back to the primary store if location wasn't detected inside cell text
-        if (!actualLocationName && entries.length > 0) {
-          actualLocationName = entries[0].sourceStoreName;
-        }
-
-        finalEvents.push({
-          date: dateKey,
-          dayNum: entries[0].dayNum,
-          isOffDay: isOffDay && !primaryShiftTime,
-          start: primaryShiftTime ? primaryShiftTime.start : null,
-          end: primaryShiftTime ? primaryShiftTime.end : null,
-          isTimeMissing: !primaryShiftTime && !isOffDay,
-          location: (isOffDay && !primaryShiftTime) ? 'OFF' : actualLocationName,
-          raw: combinedRaw.join(" | ")
-        });
-      }
-
-      finalEvents.sort((a, b) => a.date.localeCompare(b.date));
-      return { finalEvents, localMonthCode, localMonthStr, localYearStr };
-    }
-
-    async function parseGeneratedPdf(file) {
+    async function parsePdf(file) {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      
-      let eventsMap = {};
-      const page = await pdf.getPage(1);
-      const textContent = await page.getTextContent();
-      let lines = {};
+      let textItems = [];
 
-      textContent.items.forEach(item => {
-        let y = Math.round(item.transform[5]);
-        if (!lines[y]) lines[y] = [];
-        lines[y].push(item.str.trim());
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        const viewport = page.getViewport({ scale: 1.0 });
+
+        content.items.forEach(item => {
+          textItems.push({
+            text: item.str.trim(),
+            x: Math.round(item.transform[4]),
+            y: Math.round(viewport.height - item.transform[5]),
+            page: p
+          });
+        });
+      }
+      return textItems;
+    }
+
+    function inferStoreFromFilename(filename) {
+      const fn = filename.toUpperCase();
+      if (fn.includes('PP') || fn.includes('PACIFIC')) return 'PP';
+      if (fn.includes('CY') || fn.includes('CAUSEWAY')) return 'CY';
+      if (fn.includes('KT') || fn.includes('KENNEDY')) return 'KT';
+      if (fn.includes('SK') || fn.includes('SAI KUNG')) return 'SK';
+      if (fn.includes('OIE') || fn.includes('ONE ISLAND')) return 'OIE';
+      return 'UNKNOWN';
+    }
+
+    async function processRosters() {
+      if (state.filesA.length === 0) {
+        alert('Please select at least one PDF for Box A.');
+        return;
+      }
+
+      log('Starting parsing process...');
+      document.getElementById('processBtn').disabled = true;
+
+      try {
+        const storeRostersA = {};
+        for (let file of state.filesA) {
+          const store = inferStoreFromFilename(file.name);
+          log(`Parsing Box A Roster: ${file.name} (Inferred Store: ${store})`);
+          const items = await parsePdf(file);
+          storeRostersA[store] = extractShiftsForMember(items, store, state.memberName);
+        }
+
+        let storeRostersB = null;
+        if (state.filesB.length > 0) {
+          storeRostersB = {};
+          for (let file of state.filesB) {
+            const store = inferStoreFromFilename(file.name);
+            log(`Parsing Box B (Revised) Roster: ${file.name}`);
+            const items = await parsePdf(file);
+            storeRostersB[store] = extractShiftsForMember(items, store, state.memberName);
+          }
+        }
+
+        // Reconcile multi-store inputs using 2/3 Supermajority rule
+        state.resolvedEvents = reconcileMultiStoreSchedules(storeRostersA, storeRostersB);
+        
+        displaySummaryStats();
+        document.getElementById('pdfBtn').style.display = 'inline-flex';
+        document.getElementById('icsBtn').style.display = 'inline-flex';
+        log('Processing completed successfully!');
+      } catch (err) {
+        log(`ERROR: ${err.message}`);
+        console.error(err);
+      } finally {
+        document.getElementById('processBtn').disabled = false;
+      }
+    }
+
+    function extractShiftsForMember(items, defaultStore, memberName) {
+      // Find Member Row
+      const memberItem = items.find(i => i.text.toUpperCase().includes(memberName));
+      if (!memberItem) return {};
+
+      // Find Date Columns
+      const dateItems = items.filter(i => /^\d{1,2}\/\d{1,2}$\vert{}^\d{1,2}$/.test(i.text) && i.y < memberItem.y + 100 && i.y > memberItem.y - 100);
+      
+      const shiftsByDate = {};
+      
+      // Strict Spatial Filtering (Y-axis within 8px, X-axis within 18px)
+      const memberRowItems = items.filter(i => Math.abs(i.y - memberItem.y) <= 8);
+
+      dateItems.forEach(col => {
+        const cellItems = memberRowItems.filter(i => Math.abs(i.x - col.x) <= 18);
+        const cellText = cellItems.map(i => i.text).join(' ').trim();
+
+        if (!cellText || /^x$/i.test(cellText) || /^al$/i.test(cellText) \vert{}\vert{} /^sl$/i.test(cellText)) {
+          shiftsByDate[col.text] = { location: 'OFF', time: '', isOff: true };
+          return;
+        }
+
+        // Extract shift location & time
+        let loc = defaultStore;
+        let time = '';
+
+        const timeMatch = cellText.match(/(\d{2}:?\d{2})\s*[-~]\s*(\d{2}:?\d{2})/);
+        if (timeMatch) {
+          time = `${timeMatch[1]}-${timeMatch[2]}`;
+        }
+
+        const storeMatch = cellText.match(/\b(PP|CY|KT|SK|OIE)\b/i);
+        if (storeMatch) {
+          loc = storeMatch[1].toUpperCase();
+        }
+
+        shiftsByDate[col.text] = { location: loc, time: time, isOff: false, raw: cellText };
       });
 
-      let sortedY = Object.keys(lines).sort((a, b) => b - a);
+      return shiftsByDate;
+    }
 
-      sortedY.forEach(y => {
-        let rowStr = lines[y].join(" ");
-        let dateMatch = rowStr.match(/(\d{4}-\d{2}-\d{2})/);
-        if (dateMatch) {
-          let dateKey = dateMatch[1];
-          let isOff = rowStr.includes(" OFF ");
-          let parsedTime = parseShiftTime(rowStr);
-          
-          let location = "OFF";
-          if (!isOff) {
-            for (let code in locationMap) {
-              if (rowStr.includes(locationMap[code])) {
-                location = locationMap[code];
-                break;
-              }
+    function reconcileMultiStoreSchedules(rostersA, rostersB) {
+      // Collect all unique dates across all parsed rosters
+      const allDates = new Set();
+      Object.values(rostersA).forEach(r => Object.keys(r).forEach(d => allDates.add(d)));
+
+      const resolved = [];
+
+      allDates.forEach(date => {
+        const votes = [];
+        Object.entries(rostersA).forEach(([store, schedule]) => {
+          if (schedule[date] && !schedule[date].isOff) {
+            votes.push({ sourceStore: store, loc: schedule[date].location, time: schedule[date].time });
+          }
+        });
+
+        let dayResult = resolveConsensus(date, votes);
+
+        // If Box B (Revision) exists, compare and mark diff
+        if (rostersB) {
+          const votesB = [];
+          Object.entries(rostersB).forEach(([store, schedule]) => {
+            if (schedule[date] && !schedule[date].isOff) {
+              votesB.push({ sourceStore: store, loc: schedule[date].location, time: schedule[date].time });
             }
-          }
+          });
+          const resultB = resolveConsensus(date, votesB);
 
-          let rawDetail = "";
-          let parts = rowStr.split(dateKey);
-          if (parts.length > 1) {
-            let afterDate = parts[1].trim();
-            let cleanText = afterDate
-              .replace(location, '')
-              .replace(/OFF/g, '')
-              .replace(/\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}/g, '')
-              .replace(/\(UPDATED\)/g, '')
-              .trim();
-            rawDetail = cleanText || rowStr;
-          } else {
-            rawDetail = rowStr;
+          if (resultB.location !== dayResult.location || resultB.time !== dayResult.time) {
+            dayResult.isRevised = true;
+            dayResult.oldLocation = dayResult.location;
+            dayResult.oldTime = dayResult.time;
+            dayResult.location = resultB.location;
+            dayResult.time = resultB.time;
+            dayResult.status = resultB.status;
           }
+        }
 
-          eventsMap[dateKey] = {
-            date: dateKey,
-            dayNum: parseInt(dateKey.split('-')[2], 10),
-            isOffDay: isOff,
-            start: parsedTime ? parsedTime.start : null,
-            end: parsedTime ? parsedTime.end : null,
-            isTimeMissing: !parsedTime && !isOff,
-            location: location,
-            raw: rawDetail
-          };
+        resolved.push(dayResult);
+      });
+
+      return resolved.sort((a,b) => parseInt(a.date) - parseInt(b.date));
+    }
+
+    function resolveConsensus(date, votes) {
+      if (votes.length === 0) {
+        return { date, location: 'OFF', time: '', status: 'OK', flagColor: null };
+      }
+
+      // Count location frequency
+      const locCounts = {};
+      let totalVotes = votes.length;
+
+      votes.forEach(v => {
+        locCounts[v.loc] = (locCounts[v.loc] || 0) + 1;
+      });
+
+      // Find top vote getter
+      let maxVotes = 0;
+      let topLoc = '';
+      Object.entries(locCounts).forEach(([loc, count]) => {
+        if (count > maxVotes) {
+          maxVotes = count;
+          topLoc = loc;
         }
       });
 
-      return eventsMap;
+      // Calculate Ratio
+      const consensusRatio = maxVotes / totalVotes;
+
+      // Extract time from votes matching the top location
+      const matchingTimeVote = votes.find(v => v.loc === topLoc && v.time);
+      const timeStr = matchingTimeVote ? matchingTimeVote.time : '09:30-18:30';
+
+      // RULE APPLICATION:
+      // 1. 100% Consensus -> OK (Blue / Plain)
+      if (consensusRatio === 1.0) {
+        return { date, location: topLoc, time: timeStr, status: 'OK', flagColor: null };
+      }
+
+      // 2. Supermajority >= 2/3 (66.7%) -> Rule B: Majority Wins, Yellow Flag
+      // E.g., 4 out of 5 stores (80%), or 3 out of 4 stores (75%)
+      if (consensusRatio >= 0.667) {
+        return { 
+          date, 
+          location: topLoc, 
+          time: timeStr, 
+          status: 'WARN_DISCREPANCY', 
+          flagColor: '#FEF08A', // Yellow
+          note: `Minority discrepancy in 1 store. Majority (${maxVotes}/${totalVotes}) points to ${topLoc}.`
+        };
+      }
+
+      // 3. Ratio < 2/3 (e.g. 3 vs 2 split = 60%, 2 vs 2 split = 50%) -> Rule C: Hard Conflict, Red Flag
+      return { 
+        date, 
+        location: 'CONFLICT', 
+        time: 'TBD', 
+        status: 'ERR_CONFLICT', 
+        flagColor: '#FCA5A5', // Red
+        note: `CHECK WITH MANAGER. CONFLICT SCHEDULING (${maxVotes}/${totalVotes} split).`
+      };
     }
 
-    async function parseScheduleEvents() {
-      log.textContent = `Processing PDF pages for target: ${getTargetPersonName()}...\n`;
-      let res = await parsePdfFileList(filesList);
-      detectedMonthCode = res.localMonthCode;
-      detectedMonthStr = res.localMonthStr;
-      detectedYearStr = res.localYearStr;
-      return res.finalEvents;
+    function displaySummaryStats() {
+      const okCount = state.resolvedEvents.filter(e => e.status === 'OK').length;
+      const warnCount = state.resolvedEvents.filter(e => e.status === 'WARN_DISCREPANCY').length;
+      const errCount = state.resolvedEvents.filter(e => e.status === 'ERR_CONFLICT').length;
+
+      const summaryDiv = document.getElementById('statusSummary');
+      summaryDiv.innerHTML = `
+        <span class="badge-ok">✔ Clean: ${okCount} Days</span>
+        <span class="badge-warn">⚠️ Discrepancies (Yellow): ${warnCount} Days</span>
+        <span class="badge-err">🚨 Hard Conflicts (Red): ${errCount} Days</span>
+      `;
     }
 
-    icsBtn.addEventListener('click', async () => {
-      let uniqueEvents = await parseScheduleEvents();
-      let workingShifts = uniqueEvents.filter(e => !e.isOffDay);
-      let personName = getTargetPersonName();
-      if (workingShifts.length === 0) {
-        log.textContent += `\nNo active work shifts found for ${personName}.`;
-        return;
-      }
-      const filename = `${personName}_Schedule_${detectedMonthStr}_${detectedYearStr}.ics`;
-      log.textContent += `\nSuccessfully reconciled ${workingShifts.length} working shift days for ${personName}!\nDownloading ${filename}...`;
-      downloadICS(workingShifts, filename);
-    });
-
-    pdfBtn.addEventListener('click', async () => {
-      let uniqueEvents = await parseScheduleEvents();
-      let personName = getTargetPersonName();
-      if (uniqueEvents.length === 0) {
-        log.textContent += `\nNo active work shifts found for ${personName}.`;
-        return;
-      }
-      const filename = `${personName}_Schedule_${detectedMonthStr}_${detectedYearStr}.pdf`;
-      log.textContent += `\nSuccessfully reconciled ${uniqueEvents.length} schedule days for ${personName}!\nDownloading ${filename}...`;
-      generatePDF(uniqueEvents, filename);
-    });
-
-    function downloadICS(events, filename, isDiffMode = false) {
+    function exportICS() {
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
-        'PRODID:-//Shift Schedule Extractor//EN',
+        'PRODID:-//Roster Conflict Resolver//EN',
         'CALSCALE:GREGORIAN',
         'METHOD:PUBLISH'
       ];
 
-      events.forEach(e => {
-        let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
-        let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
+      state.resolvedEvents.forEach(e => {
+        if (e.location === 'OFF') return;
 
-        let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
-        let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
-
-        let summaryStr = isDiffMode ? `${e.location} -- UPDATED` : `${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`;
+        let summary = `${e.location} Shift`;
+        if (e.status === 'ERR_CONFLICT') {
+          summary = `🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER`;
+        } else if (e.status === 'WARN_DISCREPANCY') {
+          summary = `⚠️ ${e.location} Shift (Verify Location)`;
+        }
 
         icsContent.push(
           'BEGIN:VEVENT',
-          `SUMMARY:${summaryStr}`,
-          `DTSTART:${startISO}`,
-          `DTEND:${endISO}`,
+          `SUMMARY:${summary}`,
           `LOCATION:${e.location}`,
-          `DESCRIPTION:Roster Sources: ${e.raw}${e.isTimeMissing ? ' | Time: TBD' : ''}`,
+          `DESCRIPTION:${e.note || 'Roster shift entry'}`,
           'END:VEVENT'
         );
       });
@@ -678,255 +436,43 @@
       const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
       const link = document.createElement('a');
       link.href = window.URL.createObjectURL(blob);
-      link.setAttribute('download', filename);
+      link.setAttribute('download', 'Roster_Schedule.ics');
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
 
-    function generatePDF(events, filename, diffMap = {}) {
+    function downloadPDF() {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF('p', 'mm', 'a4');
-      let personName = getTargetPersonName();
+      const doc = new jsPDF();
 
-      // --- PAGE 1: Detailed List Table ---
       doc.setFontSize(16);
-      doc.text(`${personName}'s Work Schedule - ${detectedMonthStr} ${detectedYearStr}`, 14, 20);
+      doc.text("Monthly Roster & Conflict Resolution Summary", 14, 15);
 
-      const tableData = events.map(e => [
-        e.date + (diffMap[e.date] ? ' (UPDATED)' : ''),
+      const tableData = state.resolvedEvents.map(e => [
+        `Day ${e.date}`,
         e.location,
-        e.isOffDay ? 'OFF' : (e.isTimeMissing ? 'TBD' : `${e.start} - ${e.end}`),
-        e.raw
+        e.time,
+        e.status === 'ERR_CONFLICT' ? '🚨 Hard Conflict' : (e.status === 'WARN_DISCREPANCY' ? '⚠️ Discrepancy' : 'OK'),
+        e.note || ''
       ]);
 
       doc.autoTable({
-        startY: 30,
-        head: [['Date', 'Location', 'Shift Time', 'Roster Entry Details']],
+        startY: 25,
+        head: [['Date', 'Location', 'Time', 'Status', 'Notes']],
         body: tableData,
-        theme: 'striped',
-        headStyles: { fillColor: [0, 112, 243] },
         didParseCell: function(data) {
           if (data.section === 'body') {
-            let rowDate = events[data.row.index].date;
-            if (diffMap[rowDate]) {
-              data.cell.styles.fillColor = [220, 252, 231]; 
-              data.cell.styles.textColor = [6, 95, 70];    
-              data.cell.styles.fontStyle = 'bold';
+            const rowEv = state.resolvedEvents[data.row.index];
+            if (rowEv.flagColor) {
+              data.cell.styles.fillColor = rowEv.flagColor;
             }
           }
         }
       });
 
-      // --- PAGE 2: Monthly Visual Calendar View ---
-      doc.addPage();
-
-      doc.setFontSize(16);
-      doc.setFont("helvetica", "bold");
-      doc.text(`Calendar View (${personName}) - ${detectedMonthStr} ${detectedYearStr}`, 14, 18);
-
-      const startX = 14;
-      const startY = 32;
-      const cellWidth = 26;
-      const cellHeight = 22;
-      const headers = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-      headers.forEach((h, i) => {
-        const x = startX + (i * cellWidth);
-        doc.setFillColor(240, 244, 248);
-        doc.rect(x, startY - 7, cellWidth, 7, 'F');
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x, startY - 7, cellWidth, 7, 'S');
-        doc.setFontSize(10);
-        doc.setFont("helvetica", "bold");
-        doc.text(h, x + (cellWidth / 2), startY - 2, { align: 'center' });
-      });
-
-      const eventMap = {};
-      events.forEach(e => { eventMap[e.date] = e; });
-
-      let gridYear = parseInt(detectedYearStr, 10);
-      let gridMonthIdx = parseInt(detectedMonthCode, 10) - 1;
-
-      let firstDayOfMonth = new Date(gridYear, gridMonthIdx, 1);
-      let daysInMonth = new Date(gridYear, gridMonthIdx + 1, 0).getDate();
-
-      let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
-
-      let currentDay = 1;
-      let row = 0;
-
-      while (currentDay <= daysInMonth) {
-        for (let col = 0; col < 7; col++) {
-          if (row === 0 && col < startingDay) {
-            const x = startX + (col * cellWidth);
-            const y = startY + (row * cellHeight);
-            doc.setDrawColor(230, 230, 230);
-            doc.rect(x, y, cellWidth, cellHeight, 'S');
-          } else if (currentDay <= daysInMonth) {
-            const x = startX + (col * cellWidth);
-            const y = startY + (row * cellHeight);
-
-            doc.setDrawColor(200, 200, 200);
-            doc.rect(x, y, cellWidth, cellHeight, 'S');
-
-            doc.setFontSize(8.5);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(100, 100, 100);
-            doc.text(String(currentDay), x + 2, y + 4.5);
-
-            let monthStr = String(gridMonthIdx + 1).padStart(2, '0');
-            let dayStr = String(currentDay).padStart(2, '0');
-            let dateKey = `${gridYear}-${monthStr}-${dayStr}`;
-
-            let ev = eventMap[dateKey];
-            let isUpdated = !!diffMap[dateKey];
-
-            if (ev) {
-              if (ev.isOffDay) {
-                doc.setFontSize(10);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(180, 180, 180);
-                doc.text("OFF", x + (cellWidth / 2), y + 13.5, { align: 'center' });
-              } else {
-                let locShort = ev.location;
-                let matchLoc = ev.location.match(/\(([^)]+)\)/);
-                if (matchLoc) {
-                  locShort = matchLoc[1];
-                }
-
-                doc.setFontSize(13.5);
-                doc.setFont("helvetica", "bold");
-                if (isUpdated) {
-                  doc.setTextColor(16, 185, 129);
-                } else {
-                  doc.setTextColor(0, 112, 243);
-                }
-                doc.text(locShort, x + (cellWidth / 2), y + 11.5, { align: 'center' });
-
-                let timeStr = ev.isTimeMissing ? 'TBD' : `${ev.start}-${ev.end}`;
-                doc.setFontSize(10);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(40, 40, 40);
-                doc.text(timeStr, x + (cellWidth / 2), y + 17.5, { align: 'center' });
-              }
-            }
-
-            currentDay++;
-          }
-        }
-        row++;
-      }
-
-      doc.save(filename);
+      doc.save('Monthly_Roster_Summary.pdf');
     }
-
-    // =========================================================================
-    // SECTION 2: REVISION ENGINE HANDLERS
-    // =========================================================================
-    const fileInputGenerated = document.getElementById('fileInputGenerated');
-    const fileInputRev = document.getElementById('fileInputRev');
-    const dropzoneGenerated = document.getElementById('dropzoneGenerated');
-    const dropzoneRev = document.getElementById('dropzoneRev');
-    const icsDiffBtn = document.getElementById('icsDiffBtn');
-    const pdfDiffBtn = document.getElementById('pdfDiffBtn');
-    const revLog = document.getElementById('revLog');
-
-    fileInputGenerated.addEventListener('change', (e) => { generatedFile = e.target.files[0] || null; checkRevStatus(); });
-    fileInputRev.addEventListener('change', (e) => { filesListRev = Array.from(e.target.files); checkRevStatus(); });
-
-    dropzoneGenerated.addEventListener('dragover', (e) => e.preventDefault());
-    dropzoneGenerated.addEventListener('drop', (e) => { e.preventDefault(); generatedFile = e.dataTransfer.files[0] || null; checkRevStatus(); });
-
-    dropzoneRev.addEventListener('dragover', (e) => e.preventDefault());
-    dropzoneRev.addEventListener('drop', (e) => { e.preventDefault(); filesListRev = Array.from(e.dataTransfer.files); checkRevStatus(); });
-
-    function checkRevStatus() {
-      let msg = [];
-      if (generatedFile) msg.push(`Box A: ${generatedFile.name}`);
-      if (filesListRev.length > 0) msg.push(`Box B: ${filesListRev.length} updated file(s)`);
-
-      if (generatedFile && filesListRev.length > 0) {
-        revLog.textContent = "Ready to analyze changes:\n" + msg.join("\n");
-        icsDiffBtn.disabled = false;
-        pdfDiffBtn.disabled = false;
-      } else {
-        revLog.textContent = msg.join("\n") || "Upload both files to enable revision mode...";
-        icsDiffBtn.disabled = true;
-        pdfDiffBtn.disabled = true;
-      }
-    }
-
-    async function computeScheduleDiff() {
-      revLog.textContent = `Parsing original generated summary and updated roster PDFs for target: ${getTargetPersonName()}...\n`;
-      
-      let origMap = await parseGeneratedPdf(generatedFile);
-      let revRes = await parsePdfFileList(filesListRev);
-
-      detectedMonthCode = revRes.localMonthCode;
-      detectedMonthStr = revRes.localMonthStr;
-      detectedYearStr = revRes.localYearStr;
-
-      let revEvents = revRes.finalEvents;
-
-      let mergedEventsMap = { ...origMap };
-      let diffMap = {};
-      let updatedShiftsOnly = [];
-
-      revEvents.forEach(revEv => {
-        let origEv = origMap[revEv.date];
-
-        if (!origEv) {
-          diffMap[revEv.date] = true;
-          mergedEventsMap[revEv.date] = revEv;
-          if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
-        } else {
-          let isLocationSame = origEv.location === revEv.location;
-          
-          if (isLocationSame && revEv.isTimeMissing && !origEv.isTimeMissing) {
-            revEv.start = origEv.start;
-            revEv.end = origEv.end;
-            revEv.isTimeMissing = false;
-          }
-
-          let isDifferent = (origEv.start !== revEv.start) ||
-                            (origEv.end !== revEv.end) ||
-                            (origEv.location !== revEv.location) ||
-                            (origEv.isOffDay !== revEv.isOffDay);
-
-          if (isDifferent) {
-            diffMap[revEv.date] = true;
-            mergedEventsMap[revEv.date] = revEv;
-            if (!revEv.isOffDay) updatedShiftsOnly.push(revEv);
-          }
-        }
-      });
-
-      let fullMergedList = Object.values(mergedEventsMap).sort((a, b) => a.date.localeCompare(b.date));
-
-      return { fullMergedList, updatedShiftsOnly, diffMap };
-    }
-
-    icsDiffBtn.addEventListener('click', async () => {
-      let { updatedShiftsOnly } = await computeScheduleDiff();
-      let personName = getTargetPersonName();
-      if (updatedShiftsOnly.length === 0) {
-        revLog.textContent += `\nNo schedule changes detected between Box A and Box B for ${personName}.`;
-        return;
-      }
-      const filename = `${personName}_UPDATED_Shifts_${detectedMonthStr}_${detectedYearStr}.ics`;
-      revLog.textContent += `\nFound ${updatedShiftsOnly.length} updated shift(s) for ${personName}!\nDownloading delta ICS: ${filename}...`;
-      downloadICS(updatedShiftsOnly, filename, true);
-    });
-
-    pdfDiffBtn.addEventListener('click', async () => {
-      let { fullMergedList, diffMap } = await computeScheduleDiff();
-      let totalChanges = Object.keys(diffMap).length;
-      let personName = getTargetPersonName();
-      const filename = `${personName}_Revised_Schedule_${detectedMonthStr}_${detectedYearStr}.pdf`;
-      revLog.textContent += `\nReconciled schedule for ${personName} with ${totalChanges} updated day(s) highlighted in GREEN.\nDownloading revised PDF: ${filename}...`;
-      generatePDF(fullMergedList, filename, diffMap);
-    });
   </script>
 </body>
 </html>
