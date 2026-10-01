@@ -925,54 +925,56 @@
     }
 
     function renderCellContent(doc, ev, isUpdated, x, y, labelStr) {
-      doc.setFontSize(12);
+      // Date Number (Size 12)
+      doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 41, 59);
       doc.text(labelStr, x + 2, y + 5);
-
+    
       if (ev) {
-        doc.setFontSize(12);
         if (ev.status === 'HARD_CONFLICT') {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
           doc.setTextColor(153, 27, 27);
-          doc.text("🚨 CONFLICT", x + 2, y + 10);
-          doc.text("CHECK MGR", x + 2, y + 14);
+          doc.text("🚨 CONFLICT", x + 2, y + 11);
+          doc.text("CHECK MGR", x + 2, y + 16);
         } else if (ev.isOffDay) {
-          // --- OFF TEXT (Bigger & Bold) ---
-          doc.setFontSize(14);
+          // --- OFF TEXT (Size 15) ---
+          doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(100, 116, 139);
-          doc.text("OFF", x + 2, y + 10);
+          doc.text("OFF", x + 2, y + 14);
         } else { 
-          // --- LOCATION NAME (Bigger, Bold & Blue) ---
+          // --- LOCATION ACRONYM (Size 15, Bold & Blue) ---
           let locCode = ev.location;
           for (let c in locationMap) {
-            if (locationMap[c] === ev.location) { locCode = c; break; }
+            if (locationMap[c] === ev.location) { 
+              locCode = c; // Maps "Pacific Place (PP)" back to "PP"
+              break; 
+            }
+          }
           doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(0, 112, 243); // Bright Blue (#0070f3)
-          doc.text(locCode, x + 2, y + 10);
-          }
+          doc.text(locCode, x + 13, y + 12, { align: 'center' }); // Shifted down to y + 12
           
-          // --- SHIFT TIME / TBD (Slightly Larger) ---
-          
-          if (ev.isTimeMissing) {
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(30, 41, 59); // Dark slate
-            doc.text("TBD", x + 2, y + 14);
-          } else if (ev.start && ev.end) {
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(30, 41, 59); // Dark slate
-            doc.text(`${ev.start}-${ev.end}`, x + 2, y + 14);
-          }
-        }
-
-        if (isUpdated) {
+          // --- SHIFT TIME / TBD (Size 12, Bold) ---
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
+          doc.setTextColor(30, 41, 59); // Dark slate
+          if (ev.isTimeMissing) { 
+            doc.text("TBD", x + 2, y + 17.5); // Shifted down to y + 17.5
+          } else if (ev.start && ev.end) {
+            doc.text(`${ev.start}-${ev.end}`, x + 2, y + 17.5); // Shifted down to y + 17.5
+          }
+        }
+    
+        // --- REVISED UPDATE BADGE ---
+        if (isUpdated) {
+          doc.setFontSize(10); // Reduced to 8 so it fits above the box border
+          doc.setFont("helvetica", "bold");
           doc.setTextColor(6, 95, 70);
-          doc.text("UPDATED", x + 2, y + 18);
+          doc.text("UPDATED", x + 2, y + 21); // Shifted down to y + 21
         }
       }
     }
