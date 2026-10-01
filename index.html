@@ -513,6 +513,8 @@
             i.x <= maxX
           );
 
+          let lastDayNum = 0;
+
           columns.forEach(col => {
             let matched = personRowItems.filter(i => Math.abs(i.x - col.x) <= 18);
             if (matched.length === 0) return;
@@ -522,13 +524,23 @@
             let targetYear = parseInt(fileMeta.year, 10);
             let targetMonth = parseInt(fileMeta.month, 10);
 
+            // Previous month check at start of roster
             if (col.dayNum > 25 && columns.indexOf(col) < 3 && pageNum === 1) {
               targetMonth -= 1;
               if (targetMonth === 0) {
                 targetMonth = 12;
                 targetYear -= 1;
               }
+            } 
+            // Next month check at end of roster (e.g. Oct 31 -> Nov 1)
+            else if (lastDayNum > 20 && col.dayNum < 10) {
+              targetMonth += 1;
+              if (targetMonth > 12) {
+                targetMonth = 1;
+                targetYear += 1;
+              }
             }
+            lastDayNum = col.dayNum;
 
             let monthFormatted = String(targetMonth).padStart(2, '0');
             let dayFormatted = String(col.dayNum).padStart(2, '0');
@@ -912,6 +924,59 @@
       document.body.removeChild(link);
     }
 
+    function renderCellContent(doc, ev, isUpdated, x, y, labelStr) {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(labelStr, x + 2, y + 5);
+
+      if (ev) {
+        doc.setFontSize(12);
+        if (ev.status === 'HARD_CONFLICT') {
+          doc.setTextColor(153, 27, 27);
+          doc.text("🚨 CONFLICT", x + 2, y + 10);
+          doc.text("CHECK MGR", x + 2, y + 14);
+        } else if (ev.isOffDay) {
+          // --- OFF TEXT (Bigger & Bold) ---
+          doc.setFontSize(14);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(100, 116, 139);
+          doc.text("OFF", x + 2, y + 10);
+        } else { 
+          // --- LOCATION NAME (Bigger, Bold & Blue) ---
+          let locCode = ev.location;
+          for (let c in locationMap) {
+            if (locationMap[c] === ev.location) { locCode = c; break; }
+          doc.setFontSize(15);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(0, 112, 243); // Bright Blue (#0070f3)
+          doc.text(locCode, x + 2, y + 10);
+          }
+          
+          // --- SHIFT TIME / TBD (Slightly Larger) ---
+          
+          if (ev.isTimeMissing) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(30, 41, 59); // Dark slate
+            doc.text("TBD", x + 2, y + 14);
+          } else if (ev.start && ev.end) {
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(30, 41, 59); // Dark slate
+            doc.text(`${ev.start}-${ev.end}`, x + 2, y + 14);
+          }
+        }
+
+        if (isUpdated) {
+          doc.setFontSize(10);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(6, 95, 70);
+          doc.text("UPDATED", x + 2, y + 18);
+        }
+      }
+    }
+
     function generatePDF(events, filename, diffMap = {}) {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF('p', 'mm', 'a4');
@@ -1005,6 +1070,7 @@
       let startingDay = (firstDayOfMonth.getDay() + 6) % 7;
 
       let currentDay = 1;
+      let nextMonthDay = 1;
       let row = 0;
 
       while (currentDay <= daysInMonth) {
@@ -1022,7 +1088,6 @@
 
             let ev = eventMap[dateKey];
 
-            // Color-code grid cell according to conflict/revision status
             if (ev && ev.status === 'HARD_CONFLICT') {
               doc.setFillColor(252, 165, 165);
               doc.rect(x, y, cellWidth, cellHeight, 'F');
@@ -1042,49 +1107,47 @@
             }
 
             doc.rect(x, y, cellWidth, cellHeight, 'S');
-
-            // Render day number
-            doc.setFontSize(9);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(30, 41, 59);
-            doc.text(String(currentDay), x + 2, y + 5);
-
-            // Render details inside cell
-            if (ev) {
-              doc.setFontSize(7);
-              if (ev.status === 'HARD_CONFLICT') {
-                doc.setTextColor(153, 27, 27);
-                doc.text("🚨 CONFLICT", x + 2, y + 10);
-                doc.text("CHECK MGR", x + 2, y + 14);
-              } else if (ev.isOffDay) {
-                doc.setTextColor(100, 116, 139);
-                doc.text("OFF", x + 2, y + 10);
-              } else {
-                doc.setTextColor(0, 0, 0);
-                let locCode = ev.location;
-                for (let c in locationMap) {
-                  if (locationMap[c] === ev.location) { locCode = c; break; }
-                }
-                doc.text(locCode, x + 2, y + 10);
-
-                if (ev.isTimeMissing) {
-                  doc.text("TBD", x + 2, y + 14);
-                } else if (ev.start && ev.end) {
-                  doc.text(`${ev.start}-${ev.end}`, x + 2, y + 14);
-                }
-              }
-
-              if (diffMap[dateKey]) {
-                doc.setFontSize(6);
-                doc.setTextColor(6, 95, 70);
-                doc.text("UPDATED", x + 2, y + 18);
-              }
-            }
+            renderCellContent(doc, ev, diffMap[dateKey], x, y, String(currentDay));
 
             currentDay++;
           } else {
-            doc.setDrawColor(230, 230, 230);
-            doc.rect(x, y, cellWidth, cellHeight, 'S');
+            // Trailing grid cells for next month overflow
+            let nextMonthIdx = gridMonthIdx + 2;
+            let nextYear = gridYear;
+            if (nextMonthIdx > 12) { nextMonthIdx = 1; nextYear++; }
+
+            let monthStr = String(nextMonthIdx).padStart(2, '0');
+            let dayStr = String(nextMonthDay).padStart(2, '0');
+            let dateKey = `${nextYear}-${monthStr}-${dayStr}`;
+
+            let ev = eventMap[dateKey];
+
+            if (ev) {
+              if (ev.status === 'HARD_CONFLICT') {
+                doc.setFillColor(252, 165, 165);
+                doc.rect(x, y, cellWidth, cellHeight, 'F');
+                doc.setDrawColor(220, 38, 38);
+              } else if (ev.status === 'SOFT_WARNING') {
+                doc.setFillColor(254, 240, 138);
+                doc.rect(x, y, cellWidth, cellHeight, 'F');
+                doc.setDrawColor(202, 138, 4);
+              } else if (diffMap[dateKey]) {
+                doc.setFillColor(220, 252, 231);
+                doc.rect(x, y, cellWidth, cellHeight, 'F');
+                doc.setDrawColor(22, 163, 74);
+              } else {
+                doc.setFillColor(255, 255, 255);
+                doc.rect(x, y, cellWidth, cellHeight, 'F');
+                doc.setDrawColor(220, 220, 220);
+              }
+              doc.rect(x, y, cellWidth, cellHeight, 'S');
+              renderCellContent(doc, ev, diffMap[dateKey], x, y, `${monthStr}/${nextMonthDay}`);
+            } else {
+              doc.setDrawColor(230, 230, 230);
+              doc.rect(x, y, cellWidth, cellHeight, 'S');
+            }
+
+            nextMonthDay++;
           }
         }
         row++;
