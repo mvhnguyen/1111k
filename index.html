@@ -416,7 +416,6 @@
     }
 
     function parseShiftTime(text) {
-      // Remove leading location descriptors like "Bar " so times are easily captured
       let cleanedText = text.replace(/^Bar\s+/i, '');
 
       let rangeMatch = cleanedText.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
@@ -709,10 +708,13 @@
           }
         }
 
+        let hasBar = entries.some(e => e.cellText.toLowerCase().includes('bar'));
+
         finalEvents.push({
           date: dateKey,
           dayNum: entries[0].dayNum,
           isOffDay: isOffDay,
+          isBar: hasBar,
           start: finalStart,
           end: finalEnd,
           isTimeMissing: !finalStart && !isOffDay && finalStatus !== 'HARD_CONFLICT',
@@ -766,6 +768,7 @@
             date: dateKey,
             dayNum: parseInt(dateKey.split('-')[2], 10),
             isOffDay: isOff,
+            isBar: rowStr.toLowerCase().includes('bar'),
             start: parsedTime ? parsedTime.start : null,
             end: parsedTime ? parsedTime.end : null,
             isTimeMissing: !parsedTime && !isOff && !isConflict,
@@ -835,7 +838,7 @@
         let isDifferent = false;
         if (!old) {
           isDifferent = true;
-        } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.start !== e.start || old.end !== e.end) {
+        } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.isBar !== e.isBar || old.start !== e.start || old.end !== e.end) {
           isDifferent = true;
         }
 
@@ -868,9 +871,8 @@
         if (!old) {
           isDifferent = true;
         } else if (old.isOffDay && e.isOffDay) {
-          // Both are off days, no real schedule change
           isDifferent = false;
-        } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.start !== e.start || old.end !== e.end) {
+        } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.isBar !== e.isBar || old.start !== e.start || old.end !== e.end) {
           isDifferent = true;
         }
 
@@ -913,9 +915,13 @@
         if (isHardConflict) {
           summaryStr = "🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER";
         } else if (isSoftWarning) {
-          summaryStr = `⚠️ ${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`;
+          summaryStr = `⚠️ ${e.location}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
         } else {
-          summaryStr = `${e.location}${e.isTimeMissing ? ' (TBD)' : ''}`;
+          let locCode = e.location;
+          for (let c in locationMap) {
+            if (locationMap[c] === e.location) { locCode = c; break; }
+          }
+          summaryStr = `${locCode}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
         }
 
         if (isDiffMode) summaryStr += " -- UPDATED";
@@ -943,7 +949,6 @@
     }
 
     function renderCellContent(doc, ev, isUpdated, x, y, labelStr) {
-      // Date Number (Size 12)
       doc.setFontSize(10);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(30, 41, 59);
@@ -957,42 +962,41 @@
           doc.text("🚨 CONFLICT", x + 2, y + 11);
           doc.text("CHECK MGR", x + 2, y + 16);
         } else if (ev.isOffDay) {
-          // --- OFF TEXT (Size 15) ---
           doc.setFontSize(15);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(100, 116, 139);
           doc.text("OFF", x + 13, y + 14, { align: 'center' });
         } else { 
-          // --- LOCATION ACRONYM (Size 15, Bold & Blue) ---
           let locCode = ev.location;
           for (let c in locationMap) {
             if (locationMap[c] === ev.location) { 
-              locCode = c; // Maps "Pacific Place (PP)" back to "PP"
+              locCode = c; 
               break; 
             }
           }
-          doc.setFontSize(15);
+          if (ev.isBar) {
+            locCode += ": Bar";
+          }
+          doc.setFontSize(ev.isBar ? 11 : 15);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(0, 112, 243); // Bright Blue (#0070f3)
-          doc.text(locCode, x + 13, y + 12, { align: 'center' }); // Shifted down to y + 12
+          doc.setTextColor(0, 112, 243);
+          doc.text(locCode, x + 13, y + 12, { align: 'center' });
           
-          // --- SHIFT TIME / TBD (Size 12, Bold) ---
           doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(30, 41, 59); // Dark slate
+          doc.setTextColor(30, 41, 59);
           if (ev.isTimeMissing) { 
-            doc.text("TBD", x + 2, y + 17.5); // Shifted down to y + 17.5
+            doc.text("TBD", x + 2, y + 17.5);
           } else if (ev.start && ev.end) {
-            doc.text(`${ev.start}-${ev.end}`, x + 2, y + 17.5); // Shifted down to y + 17.5
+            doc.text(`${ev.start}-${ev.end}`, x + 2, y + 17.5);
           }
         }
     
-        // --- REVISED UPDATE BADGE ---
         if (isUpdated) {
-          doc.setFontSize(10); // Reduced to 8 so it fits above the box border
+          doc.setFontSize(10);
           doc.setFont("helvetica", "bold");
           doc.setTextColor(6, 95, 70);
-          doc.text("UPDATED", x + 2, y + 21); // Shifted down to y + 21
+          doc.text("UPDATED", x + 2, y + 21);
         }
       }
     }
@@ -1002,7 +1006,6 @@
       const doc = new jsPDF('p', 'mm', 'a4');
       let personName = getTargetPersonName();
 
-      // --- PAGE 1: Detailed List Table ---
       doc.setFontSize(16);
       doc.text(`${personName}'s Work Schedule - ${detectedMonthStr} ${detectedYearStr}`, 14, 20);
 
@@ -1018,9 +1021,16 @@
           shiftStr = `${e.start} - ${e.end}`;
         }
 
+        let locDisplay = e.status === 'HARD_CONFLICT' ? 'CONFLICT' : e.location;
+        if (e.isBar && !e.isOffDay && e.status !== 'HARD_CONFLICT') {
+          for (let c in locationMap) {
+            if (locationMap[c] === e.location) { locDisplay = c + ': Bar'; break; }
+          }
+        }
+
         return [
           e.date + (diffMap[e.date] ? ' (UPDATED)' : ''),
-          e.status === 'HARD_CONFLICT' ? 'CONFLICT' : e.location,
+          locDisplay,
           shiftStr,
           e.raw
         ];
@@ -1054,7 +1064,6 @@
         }
       });
 
-      // --- PAGE 2: Monthly Visual Calendar View ---
       doc.addPage();
 
       doc.setFontSize(16);
@@ -1131,7 +1140,6 @@
 
             currentDay++;
           } else {
-            // Trailing grid cells for next month overflow
             let nextMonthIdx = gridMonthIdx + 2;
             let nextYear = gridYear;
             if (nextMonthIdx > 12) { nextMonthIdx = 1; nextYear++; }
@@ -1163,7 +1171,7 @@
               doc.rect(x, y, cellWidth, cellHeight, 'S');
               renderCellContent(doc, ev, diffMap[dateKey], x, y, `${monthStr}/${nextMonthDay}`);
             } else {
-              doc.setDrawColor(230, 230, 230);
+              doc.setDropColor(230, 230, 230);
               doc.rect(x, y, cellWidth, cellHeight, 'S');
             }
 
