@@ -490,17 +490,29 @@
 
           headers.sort((a, b) => a.x - b.x);
 
-          let minX = headers[0].x - 15;
+          let minX = headers[0].x - 30;
           let maxX = headers[headers.length - 1].x + 35;
           let headerY = headers[0].y;
 
+          // Find all date-like numbers near the header row vertically
+          let dateItems = items.filter(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.y - headerY) < 35 && i.x >= minX && i.x <= maxX);
+          dateItems.sort((a, b) => a.x - b.x);
+
           let columns = [];
-          headers.forEach(h => {
-            let dateItem = items.find(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.x - h.x) < 25 && Math.abs(i.y - headerY) < 30);
-            if (dateItem) {
+          headers.forEach((h, idx) => {
+            // Find a date item belonging to this column (allowing for left-shifted week 4/5 numbers)
+            let prevHeaderX = idx > 0 ? headers[idx - 1].x : minX;
+            let matchedDate = dateItems.find(dItem => dItem.x <= h.x + 15 && dItem.x >= prevHeaderX - 10);
+            
+            // Fallback to positional array index if strict bounds miss an offset
+            if (!matchedDate && dateItems[idx]) {
+              matchedDate = dateItems[idx];
+            }
+
+            if (matchedDate) {
               columns.push({
                 dayName: h.name,
-                dayNum: parseInt(dateItem.str, 10),
+                dayNum: parseInt(matchedDate.str, 10),
                 x: h.x
               });
             }
