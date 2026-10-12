@@ -846,7 +846,7 @@
 
         if (isDifferent) {
           diffMap[e.date] = true;
-          // Include all changes, even if a shift turned into an OFF day (so it gets cancelled)
+          // Push all changes, including when a day turns to OFF
           changedShifts.push(e);
         }
       });
@@ -896,7 +896,6 @@
     });
 
     function downloadICS(events, filename, isDiffMode = false) {
-      let personName = getTargetPersonName().toLowerCase().replace(/\s+/g, '-');
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -909,44 +908,49 @@
         let isHardConflict = e.status === 'HARD_CONFLICT';
         let isSoftWarning = e.status === 'SOFT_WARNING';
 
-        let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
-        let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
-
-        let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
-        let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
-
-        // Persistent unique ID for this specific day and person so calendar apps recognize updates/deletions
-        let eventUID = `shift-${personName}-${e.date}@schedule-tool`;
-
+        let startISO, endISO;
         let summaryStr = "";
-        let eventStatus = "CONFIRMED";
+        let locationStr = "";
 
         if (e.isOffDay && isDiffMode) {
-          // If a shift was cancelled and turned into an OFF day
-          summaryStr = `CANCELLED: Shift Removed (${e.date})`;
-          eventStatus = "CANCELLED";
-        } else if (isHardConflict) {
-          summaryStr = "🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER";
-        } else if (isSoftWarning) {
-          summaryStr = `⚠️ ${e.location}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
-        } else {
-          let locCode = e.location;
-          for (let c in locationMap) {
-            if (locationMap[c] === e.location) { locCode = c; break; }
-          }
-          summaryStr = `${locCode}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
-        }
+          // Create a full-day placeholder event for days that are now OFF
+          let nextDay = new Date(e.date);
+          nextDay.setDate(nextDay.getDate() + 1);
+          let nextDateStr = nextDay.toISOString().split('T')[0].replace(/-/g, '');
 
-        if (isDiffMode && !e.isOffDay) summaryStr += " -- UPDATED";
+          startISO = e.date.replace(/-/g, '');
+          endISO = nextDateStr;
+          summaryStr = `UPDATE: OFF (Was Working)`;
+          locationStr = "OFF";
+        } else {
+          let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
+          let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
+
+          startISO = e.date.replace(/-/g, '') + 'T' + startTime;
+          endISO = e.date.replace(/-/g, '') + 'T' + endTime;
+
+          if (isHardConflict) {
+            summaryStr = "🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER";
+          } else if (isSoftWarning) {
+            summaryStr = `⚠️ ${e.location}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
+          } else {
+            let locCode = e.location;
+            for (let c in locationMap) {
+              if (locationMap[c] === e.location) { locCode = c; break; }
+            }
+            summaryStr = `${locCode}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
+          }
+
+          if (isDiffMode) summaryStr += " -- UPDATED";
+          locationStr = isHardConflict ? 'CONFLICT SCHEDULING' : e.location;
+        }
 
         icsContent.push(
           'BEGIN:VEVENT',
-          `UID:${eventUID}`,
-          `STATUS:${eventStatus}`,
           `SUMMARY:${summaryStr}`,
-          `DTSTART:${startISO}`,
-          `DTEND:${endISO}`,
-          `LOCATION:${isHardConflict ? 'CONFLICT SCHEDULING' : (e.isOffDay ? 'OFF' : e.location)}`,
+          `DTSTART:${e.isOffDay && isDiffMode ? ';VALUE=DATE:' + startISO : ':' + startISO}`,
+          `DTEND:${e.isOffDay && isDiffMode ? ';VALUE=DATE:' + endISO : ':' + endISO}`,
+          `LOCATION:${locationStr}`,
           `DESCRIPTION:Status: ${e.status} | Roster Entries: ${e.raw}`,
           'END:VEVENT'
         );
