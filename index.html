@@ -846,7 +846,7 @@
 
         if (isDifferent) {
           diffMap[e.date] = true;
-          // Push all changes, including when a day turns to OFF
+          // Include all changes, even if a shift turned into an OFF day (so it gets cancelled)
           changedShifts.push(e);
         }
       });
@@ -896,6 +896,7 @@
     });
 
     function downloadICS(events, filename, isDiffMode = false) {
+      let personName = getTargetPersonName().toLowerCase().replace(/\s+/g, '-');
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -908,27 +909,19 @@
         let isHardConflict = e.status === 'HARD_CONFLICT';
         let isSoftWarning = e.status === 'SOFT_WARNING';
 
-        let startISO, endISO;
+        let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
+        let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
+
+        // If a shift turned into an OFF day in revision mode, mark it clearly as an update notice
         let summaryStr = "";
         let locationStr = "";
 
         if (e.isOffDay && isDiffMode) {
-          // Create a full-day placeholder event for days that are now OFF
-          let nextDay = new Date(e.date);
-          nextDay.setDate(nextDay.getDate() + 1);
-          let nextDateStr = nextDay.toISOString().split('T')[0].replace(/-/g, '');
-
-          startISO = e.date.replace(/-/g, '');
-          endISO = nextDateStr;
+          startTime = '090000';
+          endTime = '100000';
           summaryStr = `UPDATE: OFF (Was Working)`;
           locationStr = "OFF";
         } else {
-          let startTime = e.start ? e.start.replace(':', '') + '00' : '090000';
-          let endTime = e.end ? e.end.replace(':', '') + '00' : '180000';
-
-          startISO = e.date.replace(/-/g, '') + 'T' + startTime;
-          endISO = e.date.replace(/-/g, '') + 'T' + endTime;
-
           if (isHardConflict) {
             summaryStr = "🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER";
           } else if (isSoftWarning) {
@@ -945,11 +938,16 @@
           locationStr = isHardConflict ? 'CONFLICT SCHEDULING' : e.location;
         }
 
+        let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
+        let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
+        let eventUID = `shift-${personName}-${e.date}@schedule-tool`;
+
         icsContent.push(
           'BEGIN:VEVENT',
+          `UID:${eventUID}`,
           `SUMMARY:${summaryStr}`,
-          `DTSTART:${e.isOffDay && isDiffMode ? ';VALUE=DATE:' + startISO : ':' + startISO}`,
-          `DTEND:${e.isOffDay && isDiffMode ? ';VALUE=DATE:' + endISO : ':' + endISO}`,
+          `DTSTART:${startISO}`,
+          `DTEND:${endISO}`,
           `LOCATION:${locationStr}`,
           `DESCRIPTION:Status: ${e.status} | Roster Entries: ${e.raw}`,
           'END:VEVENT'
