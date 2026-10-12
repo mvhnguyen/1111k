@@ -485,24 +485,22 @@
           });
 
           if (headers.length < 1) continue;
-
           headers.sort((a, b) => a.x - b.x);
 
-          let minX = headers[0].x - 30;
-          let maxX = headers[headers.length - 1].x + 35;
           let headerY = headers[0].y;
 
-          // Find all date-like numbers near the header row vertically
-          let dateItems = items.filter(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.y - headerY) < 35 && i.x >= minX && i.x <= maxX);
+          let minHeaderX = headers[0].x - 35;
+          let maxHeaderX = headers[headers.length - 1].x + 35;
+          let dateItems = items.filter(i => /^\d{1,2}$/.test(i.str) && Math.abs(i.y - headerY) < 35 && i.x >= minHeaderX && i.x <= maxHeaderX);
           dateItems.sort((a, b) => a.x - b.x);
 
           let columns = [];
           headers.forEach((h, idx) => {
-            // Find a date item belonging to this column (allowing for left-shifted week 4/5 numbers)
-            let prevHeaderX = idx > 0 ? headers[idx - 1].x : minX;
-            let matchedDate = dateItems.find(dItem => dItem.x <= h.x + 15 && dItem.x >= prevHeaderX - 10);
+            let leftBoundary = idx > 0 ? (headers[idx - 1].x + h.x) / 2 : h.x - 22;
+            let rightBoundary = idx < headers.length - 1 ? (h.x + headers[idx + 1].x) / 2 : h.x + 22;
+
+            let matchedDate = dateItems.find(dItem => dItem.x >= leftBoundary && dItem.x < rightBoundary);
             
-            // Fallback to positional array index if strict bounds miss an offset
             if (!matchedDate && dateItems[idx]) {
               matchedDate = dateItems[idx];
             }
@@ -511,7 +509,9 @@
               columns.push({
                 dayName: h.name,
                 dayNum: parseInt(matchedDate.str, 10),
-                x: h.x
+                x: h.x,
+                leftBoundary: leftBoundary,
+                rightBoundary: rightBoundary
               });
             }
           });
@@ -521,18 +521,17 @@
           let personItem = items.find(i => i.str.toLowerCase() === targetName.toLowerCase());
           if (!personItem) continue;
 
-          let personRowItems = items.filter(i => 
-            Math.abs(i.y - personItem.y) <= 8 && 
-            i.str.toLowerCase() !== targetName.toLowerCase() && 
-            i.str !== "FT" &&
-            i.x >= minX && 
-            i.x <= maxX
-          );
-
           let lastDayNum = 0;
 
           columns.forEach(col => {
-            let matched = personRowItems.filter(i => Math.abs(i.x - col.x) <= 18);
+            let matched = items.filter(i => 
+              Math.abs(i.y - personItem.y) <= 8 && 
+              i.str.toLowerCase() !== targetName.toLowerCase() && 
+              i.str !== "FT" &&
+              i.x >= col.leftBoundary && 
+              i.x < col.rightBoundary
+            );
+
             if (matched.length === 0) return;
 
             let cellText = matched.map(m => m.str).join(" ").trim();
