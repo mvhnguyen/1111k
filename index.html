@@ -416,10 +416,11 @@
     }
 
     function parseShiftTime(text) {
-      // Remove leading location descriptors like "Bar " so times are easily captured
-      let cleanedText = text.replace(/^Bar\s+/i, '');
+      // Clean up whitespace and leading labels like "Bar" or store prefixes
+      let cleanedText = text.replace(/^Bar\s+/i, '').replace(/\s+/g, ' ').trim();
 
-      let rangeMatch = cleanedText.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
+      // Match standard ranges with optional colons and flexible dashes
+      let rangeMatch = cleanedText.match(/(\d{2}:?\d{2})\s*[-–—]\s*(\d{2}:?\d{2})/);
       if (rangeMatch) {
         return {
           start: formatTimeString(rangeMatch[1]),
@@ -427,12 +428,14 @@
         };
       }
 
-      let embeddedMatch = cleanedText.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
-      if (embeddedMatch) {
+      // Match 4-digit blocks preceded by location codes or text
+      let embeddedMatch = cleanedText.match(/(?:CY|KT|SK|OIE|PP|Bar)?\s*(\d{4})\s*[-–—]?\s*(\d{4})?/i);
+      if (embeddedMatch && embeddedMatch[1]) {
         let startStr = formatTimeString(embeddedMatch[1]);
+        let endStr = embeddedMatch[2] ? formatTimeString(embeddedMatch[2]) : calculateDefaultEndTime(startStr);
         return {
           start: startStr,
-          end: calculateDefaultEndTime(startStr)
+          end: endStr
         };
       }
 
