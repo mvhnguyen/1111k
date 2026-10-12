@@ -416,7 +416,10 @@
     }
 
     function parseShiftTime(text) {
-      let rangeMatch = text.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
+      // Remove leading location descriptors like "Bar " so times are easily captured
+      let cleanedText = text.replace(/^Bar\s+/i, '');
+
+      let rangeMatch = cleanedText.match(/(\d{1,2}:?\d{2})\s*[-–—]\s*(\d{1,2}:?\d{2})/);
       if (rangeMatch) {
         return {
           start: formatTimeString(rangeMatch[1]),
@@ -424,7 +427,7 @@
         };
       }
 
-      let embeddedMatch = text.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
+      let embeddedMatch = cleanedText.match(/(?:CY|KT|SK|OIE|PP)\s*(\d{4})/i);
       if (embeddedMatch) {
         let startStr = formatTimeString(embeddedMatch[1]);
         return {
@@ -433,7 +436,7 @@
         };
       }
 
-      let singleTimeMatch = text.match(/\b(\d{1,2}:?\d{2})\b/);
+      let singleTimeMatch = cleanedText.match(/\b(\d{1,2}:?\d{2})\b/);
       if (singleTimeMatch) {
         let startStr = formatTimeString(singleTimeMatch[1]);
         return {
@@ -852,6 +855,9 @@
         let isDifferent = false;
         if (!old) {
           isDifferent = true;
+        } else if (old.isOffDay && e.isOffDay) {
+          // Both are off days, no real schedule change
+          isDifferent = false;
         } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.start !== e.start || old.end !== e.end) {
           isDifferent = true;
         }
