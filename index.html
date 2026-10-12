@@ -838,13 +838,16 @@
         let isDifferent = false;
         if (!old) {
           isDifferent = true;
+        } else if (old.isOffDay && e.isOffDay) {
+          isDifferent = false;
         } else if (old.isOffDay !== e.isOffDay || old.location !== e.location || old.isBar !== e.isBar || old.start !== e.start || old.end !== e.end) {
           isDifferent = true;
         }
 
         if (isDifferent) {
           diffMap[e.date] = true;
-          if (!e.isOffDay) changedShifts.push(e);
+          // Include all changes, even if a shift turned into an OFF day (so it gets cancelled)
+          changedShifts.push(e);
         }
       });
 
@@ -893,6 +896,7 @@
     });
 
     function downloadICS(events, filename, isDiffMode = false) {
+      let personName = getTargetPersonName().toLowerCase().replace(/\s+/g, '-');
       let icsContent = [
         'BEGIN:VCALENDAR',
         'VERSION:2.0',
@@ -911,8 +915,17 @@
         let startISO = e.date.replace(/-/g, '') + 'T' + startTime;
         let endISO = e.date.replace(/-/g, '') + 'T' + endTime;
 
+        // Persistent unique ID for this specific day and person so calendar apps recognize updates/deletions
+        let eventUID = `shift-${personName}-${e.date}@schedule-tool`;
+
         let summaryStr = "";
-        if (isHardConflict) {
+        let eventStatus = "CONFIRMED";
+
+        if (e.isOffDay && isDiffMode) {
+          // If a shift was cancelled and turned into an OFF day
+          summaryStr = `CANCELLED: Shift Removed (${e.date})`;
+          eventStatus = "CANCELLED";
+        } else if (isHardConflict) {
           summaryStr = "🚨 CONFLICT SCHEDULING - CHECK WITH MANAGER";
         } else if (isSoftWarning) {
           summaryStr = `⚠️ ${e.location}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
@@ -924,14 +937,16 @@
           summaryStr = `${locCode}${e.isBar ? ': Bar' : ''}${e.isTimeMissing ? ' (TBD)' : ''}`;
         }
 
-        if (isDiffMode) summaryStr += " -- UPDATED";
+        if (isDiffMode && !e.isOffDay) summaryStr += " -- UPDATED";
 
         icsContent.push(
           'BEGIN:VEVENT',
+          `UID:${eventUID}`,
+          `STATUS:${eventStatus}`,
           `SUMMARY:${summaryStr}`,
           `DTSTART:${startISO}`,
           `DTEND:${endISO}`,
-          `LOCATION:${isHardConflict ? 'CONFLICT SCHEDULING' : e.location}`,
+          `LOCATION:${isHardConflict ? 'CONFLICT SCHEDULING' : (e.isOffDay ? 'OFF' : e.location)}`,
           `DESCRIPTION:Status: ${e.status} | Roster Entries: ${e.raw}`,
           'END:VEVENT'
         );
